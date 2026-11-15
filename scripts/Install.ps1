@@ -85,6 +85,10 @@ if($DisableAidaAutostart){
     $old=Get-ScheduledTask -TaskName 'AIDA64 AutoStart' -ErrorAction SilentlyContinue
     if($old){Export-ScheduledTask -TaskName $old.TaskName -TaskPath $old.TaskPath | Set-Content -LiteralPath (Join-Path $installRoot 'AIDA64-AutoStart-backup.xml') -Encoding utf8;Disable-ScheduledTask -InputObject $old | Out-Null;Stop-ScheduledTask -InputObject $old}
 }
-[pscustomobject]@{version='0.1.1';exe_sha256=$sourceHash;user_sid=$UserSid;delay_seconds=$DelaySeconds;staged=[bool]$StageOnly;pawnio=$pawn.DisplayVersion;installed_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installRoot 'installation.json') -Encoding utf8
+$releaseInfo=Join-Path $Source 'build-info.json'
+$version='unknown'
+if(Test-Path -LiteralPath $releaseInfo){$version=(Get-Content -LiteralPath $releaseInfo -Raw|ConvertFrom-Json).version}
+elseif(Test-Path -LiteralPath (Join-Path $Source 'Cargo.toml')){$version=[regex]::Match([IO.File]::ReadAllText((Join-Path $Source 'Cargo.toml')),'(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value}
+[pscustomobject]@{version=$version;exe_sha256=$sourceHash;user_sid=$UserSid;delay_seconds=$DelaySeconds;staged=[bool]$StageOnly;pawnio=$pawn.DisplayVersion;installed_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installRoot 'installation.json') -Encoding utf8
 Write-Output "Installed in $installRoot"
 Write-Output 'Tasks: \SensorPanel\Panel and \SensorPanel\Collector. The external AI usage task was preserved.'

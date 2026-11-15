@@ -7,6 +7,11 @@ $versionMatch=[regex]::Match([IO.File]::ReadAllText((Join-Path $root 'Cargo.toml
 if(-not $versionMatch.Success){throw 'Cannot read the package version.'}
 $version=$versionMatch.Groups[1].Value
 if($ExpectedVersion -and $ExpectedVersion -ne $version){throw 'Tag version does not match Cargo.toml.'}
+if($ExpectedVersion){
+    $initialChanges=@(& git status --porcelain --untracked-files=no | Where-Object {-not [string]::IsNullOrWhiteSpace($_)})
+    if($LASTEXITCODE -ne 0){throw 'Cannot inspect the release worktree.'}
+    if($initialChanges.Count){throw ('Release worktree must be clean: '+($initialChanges -join '; '))}
+}
 & (Join-Path $PSScriptRoot 'Prepare-Modules.ps1') -IncludeSource
 $cache=Join-Path $root '.tools\downloads'
 $installer=Join-Path $cache 'PawnIO_setup.exe'
@@ -65,7 +70,10 @@ Copy-Item -LiteralPath $moduleSource -Destination (Join-Path $sourceRoot 'vendor
 Copy-Item -LiteralPath $licenses -Destination $sourceRoot -Recurse -Force
 $commit=& git rev-parse HEAD
 if($LASTEXITCODE -ne 0){throw 'Cannot identify the build commit.'}
-$dirty=@(& git status --porcelain --untracked-files=no).Count -gt 0
+$changes=@(& git status --porcelain --untracked-files=no | Where-Object {-not [string]::IsNullOrWhiteSpace($_)})
+if($LASTEXITCODE -ne 0){throw 'Cannot inspect the packaged worktree.'}
+$dirty=$changes.Count -gt 0
+if($ExpectedVersion -and $dirty){throw ('Packaging modified tracked files: '+($changes -join '; '))}
 [pscustomobject]@{version=$version;target='x86_64-pc-windows-msvc';commit=$commit;uncommitted_changes=$dirty;module_source_commit='52a7e536dff3e53c96917a28caac5e0fa6510696';executable_signed=$false}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $package 'build-info.json') -Encoding utf8
 $profile=Start-Process -FilePath (Join-Path $package 'sensorpanel.exe') -ArgumentList '--default-profile','--out',('"'+(Join-Path $package 'default-profile.json')+'"') -WindowStyle Hidden -Wait -PassThru
 if($profile.ExitCode -ne 0){throw 'Cannot generate the default profile.'}

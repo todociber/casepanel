@@ -18,6 +18,8 @@ $zip=[IO.Compression.ZipFile]::OpenRead($archive)
 try {
     # Explicit names: do not extract arbitrary paths from the archive.
     foreach($name in 'AMDFamily17.bin','LpcIO.bin','Nvidia.bin','COPYING') {
+        # Preserve the tracked license's canonical line endings on clean checkouts.
+        if($name -eq 'COPYING' -and (Test-Path -LiteralPath (Join-Path $moduleRoot $name))){continue}
         $entry=$zip.GetEntry($name)
         if(-not $entry){throw "The official distribution is missing $name."}
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,(Join-Path $moduleRoot $name),$true)
