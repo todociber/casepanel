@@ -1,0 +1,18 @@
+/.tools/
+/target/
+/dist/
+/artifacts/
+*.tmp
+
+# Restore the three required signed modules with scripts/Prepare-Modules.ps1.
+/vendor/pawnio/modules/*.bin
+/vendor/pawnio/release_*.zip
+/vendor/reference/nvml.h
+
+# Local credentials and signing material.
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
