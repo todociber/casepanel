@@ -48,7 +48,7 @@ impl Sensor {
             value: None,
             observed_ms: 0,
             quality: Quality::Unavailable,
-            message: "Sin lectura".into(),
+            message: "No reading".into(),
         }
     }
     pub fn set(&mut self, value: f64) {
@@ -58,7 +58,7 @@ impl Sensor {
             self.quality = Quality::Valid;
             self.message.clear();
         } else {
-            self.fail("Lectura no finita");
+            self.fail("Reading is not finite");
         }
     }
     pub fn fail(&mut self, message: impl Into<String>) {
@@ -99,10 +99,10 @@ impl Snapshot {
     }
     pub fn validate(&self) -> Result<(), String> {
         if self.version != PROTOCOL_VERSION {
-            return Err("Versión IPC incompatible".into());
+            return Err("Incompatible IPC version".into());
         }
         if self.sensors.len() > 256 || self.diagnostics.len() > 64 {
-            return Err("Catálogo excesivo".into());
+            return Err("Sensor catalog is too large".into());
         }
         for s in &self.sensors {
             if s.id.len() > 256
@@ -111,7 +111,7 @@ impl Snapshot {
                 || s.interval_ms < 100
                 || s.value.is_some_and(|v| !v.is_finite())
             {
-                return Err("Muestra inválida".into());
+                return Err("Invalid sample".into());
             }
         }
         Ok(())
@@ -167,7 +167,7 @@ impl Store {
                 || s.device.starts_with("nvidia:")
         }) {
             if !ids.contains(&s.id) {
-                s.fail("Dispositivo no presente");
+                s.fail("Device is not present");
             }
         }
         for s in snapshot.sensors {

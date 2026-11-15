@@ -80,7 +80,7 @@ fn pipe_name() -> Result<String, String> {
 fn write_frame<T: serde::Serialize>(pipe: &Pipe, value: &T) -> Result<(), String> {
     let mut bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
     if bytes.len() >= MAX_FRAME {
-        return Err("Trama IPC demasiado grande".into());
+        return Err("IPC frame is too large".into());
     }
     bytes.push(b'\n');
     let mut sent = 0;
@@ -96,7 +96,7 @@ fn write_frame<T: serde::Serialize>(pipe: &Pipe, value: &T) -> Result<(), String
             )
         };
         if ok == 0 || n == 0 {
-            return Err("Canal IPC cerrado o saturado".into());
+            return Err("IPC channel is closed or full".into());
         }
         sent += n as usize;
     }
@@ -114,10 +114,10 @@ fn read_available(pipe: &Pipe, buffer: &mut Vec<u8>) -> Result<Vec<Vec<u8>>, Str
             std::ptr::null_mut(),
         ) == 0
         {
-            return Err("Canal desconectado".into());
+            return Err("Channel disconnected".into());
         }
         if buffer.len() + available as usize > MAX_FRAME {
-            return Err("Trama IPC excede límite".into());
+            return Err("IPC frame exceeds the size limit".into());
         }
         if available > 0 {
             let start = buffer.len();
@@ -131,7 +131,7 @@ fn read_available(pipe: &Pipe, buffer: &mut Vec<u8>) -> Result<Vec<Vec<u8>>, Str
                 std::ptr::null_mut(),
             ) == 0
             {
-                return Err("Lectura IPC falló".into());
+                return Err("IPC read failed".into());
             }
             buffer.truncate(start + read as usize);
         }
@@ -156,12 +156,12 @@ fn connect() -> Result<Pipe, String> {
             0,
         );
         if h == -1 {
-            return Err("Recolector no conectado".into());
+            return Err("Collector is not connected".into());
         }
         let mode = 1u32; // PIPE_NOWAIT: UI worker never blocks inside ReadFile.
         if SetNamedPipeHandleState(h, &mode, std::ptr::null(), std::ptr::null()) == 0 {
             platform::CloseHandle(h);
-            return Err("No se pudo configurar tubería".into());
+            return Err("Could not configure the named pipe".into());
         }
         Ok(Pipe(h))
     }
@@ -285,12 +285,12 @@ fn client_loop(
                 .stderr(std::process::Stdio::null())
                 .status();
             crate::logging::write(&format!(
-                "Reintento de recolector {}/3: {}",
+                "Collector restart attempt {}/3: {}",
                 recovery.attempts,
                 if result.is_ok_and(|s| s.success()) {
-                    "solicitado"
+                    "requested"
                 } else {
-                    "tarea no disponible"
+                    "task is unavailable"
                 }
             ));
         }
@@ -335,7 +335,7 @@ pub fn serve() -> Result<(), String> {
             std::ptr::null_mut(),
         ) == 0
         {
-            return Err("No se pudo proteger IPC".into());
+            return Err("Could not secure IPC".into());
         }
         let sa = SecurityAttributes {
             length: std::mem::size_of::<SecurityAttributes>() as u32,
@@ -355,7 +355,7 @@ pub fn serve() -> Result<(), String> {
         platform::LocalFree(descriptor);
         if raw == -1 {
             return Err(format!(
-                "No se pudo crear IPC; otra instancia puede estar activa ({})",
+                "Could not create IPC; another instance may be running ({})",
                 platform::GetLastError()
             ));
         }

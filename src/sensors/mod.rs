@@ -15,7 +15,7 @@ impl Collector {
     pub fn new() -> Self {
         let inventory = platform::inventory();
         let mut diagnostics = vec![format!(
-            "CPU: {}; placa: {}",
+            "CPU: {}; motherboard: {}",
             inventory.cpu_name, inventory.board
         )];
         let gpu = match nvml::Nvml::new() {

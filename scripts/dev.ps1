@@ -14,7 +14,11 @@ if (Test-Path -LiteralPath "$localMsvc\bin\Hostx64\x64\link.exe") {
     $env:PATH="$localMsvc\bin\Hostx64\x64;$sdkRoot\bin\$sdkVersion\x64;$env:PATH"
     $env:LIB="$localMsvc\lib\x64;$localMsvc\lib\onecore\x64;$sdkRoot\Lib\$sdkVersion\um\x64;$sdkRoot\Lib\$sdkVersion\ucrt\x64"
 } elseif (-not (Get-Command link.exe -ErrorAction SilentlyContinue)) {
-    throw 'Abra una Developer PowerShell de Visual Studio con las herramientas C++ y Windows SDK.'
+    $vswhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $vsInstall=$null
+    if(Test-Path -LiteralPath $vswhere){$vsInstall=& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath}
+    if(-not $vsInstall){throw 'Install Visual Studio C++ build tools and a Windows SDK, or use a Developer PowerShell.'}
+    & (Join-Path $vsInstall 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
 }
 if ($Strict -and $CargoArgs[0] -eq 'clippy') {$CargoArgs += @('--','-D','warnings')}
 & cargo @CargoArgs

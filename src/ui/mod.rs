@@ -45,32 +45,32 @@ const ID_STATUS: usize = 222;
 const FIELD_NAMES: [&str; 18] = [
     "X",
     "Y",
-    "Ancho",
-    "Alto",
-    "Texto / etiqueta",
-    "Unidad",
-    "Decimales",
-    "Tamaño fuente",
-    "Mínimo",
-    "Máximo",
+    "Width",
+    "Height",
+    "Text / label",
+    "Unit",
+    "Decimals",
+    "Font size",
+    "Minimum",
+    "Maximum",
     "Color #RRGGBB",
-    "Fondo #RRGGBB",
-    "Fuente",
-    "Alineación (left/center/right)",
-    "Ruta de imagen",
+    "Background #RRGGBB",
+    "Font",
+    "Alignment (left/center/right)",
+    "Image path",
     "",
     "",
     " ",
 ];
 const KINDS: [(WidgetKind, &str); 8] = [
-    (WidgetKind::Text, "Texto"),
-    (WidgetKind::Value, "Valor"),
-    (WidgetKind::Bar, "Barra"),
-    (WidgetKind::Gauge, "Medidor circular"),
-    (WidgetKind::Image, "Imagen"),
-    (WidgetKind::Graph, "Gráfico de líneas"),
-    (WidgetKind::Rectangle, "Rectángulo"),
-    (WidgetKind::Clock, "Reloj"),
+    (WidgetKind::Text, "Text"),
+    (WidgetKind::Value, "Value"),
+    (WidgetKind::Bar, "Bar"),
+    (WidgetKind::Gauge, "Circular gauge"),
+    (WidgetKind::Image, "Image"),
+    (WidgetKind::Graph, "Line chart"),
+    (WidgetKind::Rectangle, "Rectangle"),
+    (WidgetKind::Clock, "Clock"),
 ];
 struct Drag {
     index: usize,
@@ -194,7 +194,7 @@ pub fn run(profile: PathBuf, preview: bool, exit_after: Option<u64>) -> Result<(
         app.panel = CreateWindowExW(
             ex,
             w!("SensorPanel.Native"),
-            w!("SensorPanel"),
+            w!("CasePanel"),
             style,
             100,
             100,
@@ -260,7 +260,7 @@ unsafe fn tray(hwnd: HWND, add: bool) {
         hIcon: LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
         ..Default::default()
     };
-    let words = platform::wide("SensorPanel — clic derecho para configurar");
+    let words = platform::wide("CasePanel — right-click to configure");
     data.szTip[..words.len()].copy_from_slice(&words);
     let _ = Shell_NotifyIconW(if add { NIM_ADD } else { NIM_DELETE }, &data);
 }
@@ -365,10 +365,10 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
 }
 unsafe fn popup(hwnd: HWND) {
     if let Ok(menu) = CreatePopupMenu() {
-        let _ = AppendMenuW(menu, MF_STRING, ID_EDIT, w!("Editar panel y sensores"));
-        let _ = AppendMenuW(menu, MF_STRING, ID_SHOW, w!("Ubicar panel"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_EDIT, w!("Edit panel and sensors"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_SHOW, w!("Position panel"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        let _ = AppendMenuW(menu, MF_STRING, ID_EXIT, w!("Salir"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_EXIT, w!("Exit"));
         let mut p = POINT::default();
         let _ = GetCursorPos(&mut p);
         let _ = SetForegroundWindow(hwnd);
@@ -427,7 +427,7 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
     if !editor && result.is_ok() && !a.first_paint {
         a.first_paint = true;
         crate::logging::write(&format!(
-            "Primer dibujo del panel: {} ms",
+            "First panel paint: {} ms",
             a.started.elapsed().as_millis()
         ));
     }
@@ -547,11 +547,11 @@ impl App {
                 })
                 .count();
             let status = format!(
-                "{}\r\nSensores: {} | asociaciones pendientes: {}\r\n{}",
+                "{}\r\nSensors: {} | unresolved bindings: {}\r\n{}",
                 if self.dirty {
-                    "Cambios sin guardar"
+                    "Unsaved changes"
                 } else {
-                    "Perfil guardado"
+                    "Profile saved"
                 },
                 self.store.sensors.len(),
                 missing,
@@ -582,7 +582,7 @@ impl App {
         if let Ok(hwnd) = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             w!("SensorPanel.Editor"),
-            w!("SensorPanel — editor visual"),
+            w!("CasePanel — visual editor"),
             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
             40,
             30,
@@ -659,16 +659,16 @@ impl App {
             self.fields.push(edit);
         }
         for (id, text) in [
-            (ID_ADD, "Añadir"),
-            (ID_DELETE, "Eliminar"),
-            (ID_UP, "Subir capa"),
-            (ID_DOWN, "Bajar capa"),
-            (ID_APPLY, "Aplicar propiedades"),
-            (ID_SAVE, "Guardar"),
-            (ID_IMPORT, "Importar"),
-            (ID_EXPORT, "Exportar"),
-            (ID_SETTINGS, "Aplicar pantalla e inicio"),
-            (ID_IMAGE, "Elegir imagen"),
+            (ID_ADD, "Add"),
+            (ID_DELETE, "Delete"),
+            (ID_UP, "Raise layer"),
+            (ID_DOWN, "Lower layer"),
+            (ID_APPLY, "Apply properties"),
+            (ID_SAVE, "Save"),
+            (ID_IMPORT, "Import"),
+            (ID_EXPORT, "Export"),
+            (ID_SETTINGS, "Apply display and startup"),
+            (ID_IMAGE, "Choose image"),
         ] {
             self.control(w!("BUTTON"), text, id, WS_TABSTOP);
         }
@@ -694,14 +694,14 @@ impl App {
         self.control(w!("STATIC"), "Tipo", 501, WINDOW_STYLE(0));
         self.control(
             w!("STATIC"),
-            "Sensor (datos IA: reportados por script)",
+            "Sensor (AI usage is reported by an external script)",
             502,
             WINDOW_STYLE(0),
         );
-        self.control(w!("STATIC"), "Pantalla destino", 503, WINDOW_STYLE(0));
+        self.control(w!("STATIC"), "Target display", 503, WINDOW_STYLE(0));
         self.control(
             w!("STATIC"),
-            "Demora al iniciar sesión (0–60 s)",
+            "Logon startup delay (0–60 s)",
             504,
             WINDOW_STYLE(0),
         );
@@ -775,7 +775,7 @@ impl App {
         let old = text(self.sensor_combo);
         let _ = SendMessageW(self.sensor_combo, CB_RESETCONTENT, None, None);
         self.sensor_options.clear();
-        combo_add(self.sensor_combo, "Sin sensor");
+        combo_add(self.sensor_combo, "No sensor");
         self.sensor_options.push((String::new(), String::new()));
         for s in self.store.sensors.values() {
             combo_add(self.sensor_combo, &format!("{} [{}]", s.label, s.unit));
@@ -859,7 +859,7 @@ impl App {
             ($n:expr,$ty:ty) => {
                 f[$n]
                     .parse::<$ty>()
-                    .map_err(|_| format!("{} inválido", FIELD_NAMES[$n]))?
+                    .map_err(|_| format!("Invalid {}", FIELD_NAMES[$n]))?
             };
         }
         w.x = number!(0, f32);
@@ -890,7 +890,7 @@ impl App {
             && render::convert_unit(1., &sensor.unit, &w.unit).is_none()
         {
             return Err(format!(
-                "Unidad incompatible; este sensor usa {}",
+                "Incompatible unit; this sensor uses {}",
                 sensor.unit
             ));
         }
@@ -914,7 +914,7 @@ impl App {
         self.dirty = false;
         self.edit_backup = Some(self.config.clone());
         self.autosave = true;
-        self.message = format!("Guardado: {}", self.profile.display());
+        self.message = format!("Saved: {}", self.profile.display());
         Ok(())
     }
     unsafe fn command(&mut self, id: usize, notification: usize) -> Result<(), String> {
@@ -1012,16 +1012,16 @@ impl App {
                 }
                 let delay = text(self.delay)
                     .parse::<u32>()
-                    .map_err(|_| "Demora inválida")?;
+                    .map_err(|_| "Invalid delay")?;
                 if delay > 60 {
-                    return Err("Demora debe estar entre 0 y 60".into());
+                    return Err("Delay must be between 0 and 60".into());
                 }
                 self.config.startup_delay_seconds = delay;
                 self.dirty = true;
                 self.position_panel();
                 self.config.save(&self.profile)?;
                 self.dirty = false;
-                self.message="Pantalla guardada. Para cambiar la demora de tareas ya instaladas, ejecutar el instalador otra vez.".into();
+                self.message="Display saved. Run the installer again to change the delay of existing startup tasks.".into();
             }
             _ => (),
         }
@@ -1058,7 +1058,7 @@ unsafe extern "system" fn editor_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                     MessageBoxW(
                         Some(hwnd),
                         PCWSTR(words.as_ptr()),
-                        w!("Revisar configuración"),
+                        w!("Check configuration"),
                         MB_OK | MB_ICONWARNING,
                     );
                 }
@@ -1131,8 +1131,8 @@ unsafe extern "system" fn editor_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                 if a.dirty {
                     let answer = MessageBoxW(
                         Some(hwnd),
-                        w!("¿Guardar los cambios del panel?"),
-                        w!("SensorPanel"),
+                        w!("Save changes to the panel?"),
+                        w!("CasePanel"),
                         MB_YESNOCANCEL | MB_ICONQUESTION,
                     );
                     if answer == IDCANCEL {
@@ -1191,9 +1191,9 @@ unsafe fn text(hwnd: HWND) -> String {
 unsafe fn file_dialog(owner: HWND, save: bool, image: bool) -> Option<PathBuf> {
     let mut name = vec![0u16; 32768];
     let filter = platform::wide(if image {
-        "Imágenes\0*.png;*.jpg;*.jpeg;*.bmp\0Todos\0*.*\0"
+        "Images\0*.png;*.jpg;*.jpeg;*.bmp\0All files\0*.*\0"
     } else {
-        "Perfil SensorPanel\0*.json\0"
+        "CasePanel profile\0*.json\0"
     });
     let mut dialog = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,

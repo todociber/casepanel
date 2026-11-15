@@ -13,10 +13,10 @@ impl Basic {
         Self {
             previous: None,
             sensors: vec![
-                Sensor::new(&identity, "cpu.load", "Utilización CPU", "%", 1000),
-                Sensor::new("windows-memory", "ram.used", "RAM usada", "GiB", 1000),
-                Sensor::new("windows-memory", "ram.free", "RAM disponible", "GiB", 1000),
-                Sensor::new("windows-memory", "ram.load", "Utilización RAM", "%", 1000),
+                Sensor::new(&identity, "cpu.load", "CPU usage", "%", 1000),
+                Sensor::new("windows-memory", "ram.used", "RAM used", "GiB", 1000),
+                Sensor::new("windows-memory", "ram.free", "RAM available", "GiB", 1000),
+                Sensor::new("windows-memory", "ram.load", "RAM usage", "%", 1000),
                 Sensor::new("registry-ai", "ai.claude.5h", "Claude 5h", "%", 5000),
                 Sensor::new("registry-ai", "ai.codex.5h", "Codex 5h", "%", 5000),
             ],
@@ -39,7 +39,7 @@ impl Basic {
                 }
                 self.previous = Some((idle.ticks(), total));
             } else {
-                self.sensors[0].fail("GetSystemTimes falló");
+                self.sensors[0].fail("GetSystemTimes failed");
             }
             let mut mem = MemoryStatus {
                 length: std::mem::size_of::<MemoryStatus>() as u32,
@@ -52,15 +52,15 @@ impl Basic {
                     .set(100. * (mem.total_phys - mem.avail_phys) as f64 / mem.total_phys as f64);
             } else {
                 for s in &mut self.sensors[1..4] {
-                    s.fail("GlobalMemoryStatusEx falló");
+                    s.fail("GlobalMemoryStatusEx failed");
                 }
             }
             if self.ticks.is_multiple_of(5) {
                 let path = "Software\\FinalWire\\AIDA64\\ImportValues";
                 let state = registry_string(false, path, "Str9")
-                    .unwrap_or_else(|| "Estado no publicado".into());
+                    .unwrap_or_else(|| "No external status provided".into());
                 let stamp = registry_string(false, path, "Str10")
-                    .unwrap_or_else(|| "Sin marca de actualización".into());
+                    .unwrap_or_else(|| "No update timestamp".into());
                 for (i, name, description) in [(4, "DW1", "Str1"), (5, "DW3", "Str3")] {
                     let note = registry_string(false, path, description).unwrap_or_default();
                     match registry_dword(path, name) {
@@ -68,10 +68,10 @@ impl Basic {
                             self.sensors[i].set(value as f64);
                             self.sensors[i].quality = Quality::Reported;
                             self.sensors[i].message = format!(
-                                "Valor reportado por script; frescura por proveedor no verificada. {note} | {state} | {stamp}"
+                                "Reported by external script; per-provider freshness is unverified. {note} | {state} | {stamp}"
                             );
                         }
-                        _ => self.sensors[i].fail("Sin porcentaje externo válido"),
+                        _ => self.sensors[i].fail("No valid external percentage"),
                     }
                 }
             }

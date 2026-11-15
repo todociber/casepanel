@@ -1,58 +1,59 @@
-# Validación de la primera entrega
+# Initial validation report
 
-Equipo de prueba: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7 y PM1562 de 1920 × 1200. Fecha: 14 de noviembre de 2026, hora de El Salvador.
+Test PC: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7, and a 1920 × 1200 PM1562. Original validation date: November 14, 2026, El Salvador time.
 
-## Comprobaciones realizadas
+## Completed checks
 
-- Compilación Release con CRT estático; dependencias importadas limitadas a DLL de Windows. NVML y PawnIOLib se cargan desde sus instalaciones nativas.
-- 18 pruebas automatizadas aprobadas y Clippy con advertencias como errores. Cubren perfiles dañados y respaldo, versiones, límites, datos antiguos, cero RPM, historial acotado, identidad de hardware, selección ambigua de pantalla, decodificación AMD/ITE y presupuesto de recuperación.
-- Diagnóstico elevado real, con AIDA64 cerrado durante la captura. Se obtuvieron lecturas válidas de temperatura, frecuencia y potencia CPU; ventiladores CPU y SYS4; temperatura, utilización, frecuencia, potencia, RPM y VRAM NVIDIA; temperatura de memoria mediante el módulo Nvidia firmado. Cero RPM de GPU se conservó como lectura válida.
-- Editor nativo abierto desde el menú contextual; cambio de posición, aplicación y guardado de JSON verificados. Cierre del editor y opción «Salir» comprobados en la vista previa. La vista previa no sustituye una comparación visual de cada widget personalizado.
-- Terminación real del recolector instalado con código 70: recuperación en 61,1 segundos y mismo proceso del panel durante la interrupción. Windows no ejecutó sus reintentos de tarea en esta compilación; la supervisión acotada del panel resolvió la recuperación.
-- Primer dibujo registrado en 38 ms desde la entrada en la función de interfaz, en una ejecución con cachés calientes. Este cronómetro no mide carga del ejecutable, demora de tarea ni arranque de Windows.
+- Release build with a statically linked CRT and Windows-only imported DLLs. NVML and PawnIOLib load from their native installations.
+- 18 automated tests passed, with Clippy warnings treated as errors. Coverage includes damaged-profile recovery, protocol/profile versions, limits, stale values, valid zero RPM, bounded history, device identity, ambiguous monitor selection, AMD/ITE decoding, and restart budgets.
+- An elevated hardware diagnostic ran with AIDA64 closed. It returned valid CPU temperature, clock, and power; CPU and SYS4 fan readings; NVIDIA temperature, load, clock, power, RPM, VRAM, and memory temperature through the signed Nvidia module. Zero GPU fan RPM remained valid.
+- The native editor opened through the context menu. A position change, property application, and JSON save were verified. Editor close and Exit were checked in preview. This does not validate every possible custom widget configuration.
+- The installed collector was terminated with exit code 70. It recovered in 61.1 seconds while the panel retained its process. Native bounded supervision handled the recovery after Windows task retries failed to run on this build.
+- A warm first draw was logged at 38 ms from entry into the UI function. This timer excludes executable loading, task delay, and Windows boot.
 
-Los archivos de evidencia locales están en `artifacts`: `diagnostic-hardware.json`, `recovery-test.json` y los informes de rendimiento. No se incluyen en el paquete distribuible porque contienen identidades de este equipo.
+Local evidence lives in `artifacts`, including hardware diagnostics, recovery tests, and performance reports. It is excluded from public distributions because it contains machine identities.
 
-## Rendimiento
+## Performance
 
-Medición inicial completada: 600 muestras durante 615,1 segundos, editor cerrado, plantilla predeterminada y ambos procesos instalados. CPU normalizada entre 24 procesadores lógicos.
+The first measurement used 600 samples over 615.1 seconds, with the editor closed, the default layout, and both installed processes. CPU is normalized across 24 logical processors.
 
-| Métrica conjunta del panel y recolector | Resultado inicial |
+| Panel and collector combined | Initial result |
 |---|---:|
-| CPU media de la máquina | 0,0073 % |
-| Memoria privada comprometida media | 58,29 MiB |
-| Memoria privada comprometida mínima / máxima | 56,71 / 58,77 MiB |
-| Suma de memoria residente media | 79,92 MiB |
+| Average machine CPU | 0.0073% |
+| Average private committed memory | 58.29 MiB |
+| Minimum / maximum private committed memory | 56.71 / 58.77 MiB |
+| Average sum of working sets | 79.92 MiB |
 
-La memoria privada comprometida y la memoria residente son métricas diferentes. La suma de memoria residente puede contar páginas compartidas más de una vez. Estas cifras corresponden a los dos procesos nativos; el productor PowerShell de IA existente se conserva como dependencia externa de la configuración actual y se evalúa por separado. El presupuesto de 60 MiB se cumple en los procesos nativos, pero no en el conjunto que incluye ese productor heredado. Reducir este último corresponde a la etapa 1.1 acordada.
+Private committed memory differs from resident memory. Summed working sets may count shared pages more than once. The 60 MiB budget was met for the native processes, but not for the configuration including the legacy AI producer. Reducing that producer is deferred to stage 1.1.
 
-Se completó además otra muestra de 600 intervalos durante 617,1 segundos, incluyendo el productor real de IA, con actividad habitual del escritorio. No es una carga CPU/GPU controlada.
+A second measurement used 600 intervals over 617.1 seconds and included the existing AI producer during ordinary desktop use. This was not a controlled CPU/GPU stress test.
 
-| Proceso | CPU media de la máquina | Memoria privada comprometida media |
+| Process | Average machine CPU | Average private committed memory |
 |---|---:|---:|
-| Panel nativo | 0,0091 % | 31,43 MiB |
-| Recolector nativo | 0,0056 % | 27,50 MiB |
-| Productor PowerShell de IA existente | 0,0026 % | 80,88 MiB |
-| **Conjunto completo** | **0,0173 %** | **139,82 MiB** |
+| Native panel | 0.0091% | 31.43 MiB |
+| Native collector | 0.0056% | 27.50 MiB |
+| Existing PowerShell AI producer | 0.0026% | 80.88 MiB |
+| **Full configuration** | **0.0173%** | **139.82 MiB** |
 
-El conjunto tuvo un mínimo de 138,29 MiB y un máximo de 140,66 MiB privados comprometidos. La suma residente media fue 122,76 MiB en esta segunda muestra; el conjunto de páginas residentes cambia con la presión de memoria del sistema. Evidencia: `artifacts/performance-with-ai-producer.json`.
+The full configuration ranged from 138.29 to 140.66 MiB private committed memory. Its average summed working set was 122.76 MiB in the second sample; resident pages vary with system memory pressure.
 
-Las mediciones largas corresponden a la compilación anterior a la corrección final del despacho del menú contextual. La corrección solo cambia cómo se entrega la orden del menú a la ventana; después se repitieron las 18 pruebas, Clippy y la prueba real de abrir el editor y salir. También se compiló y probó el código fuente incluido en el paquete como proyecto independiente. No se repitió el ensayo largo tras ese ajuste de interacción.
+Long measurements predate the final context-menu dispatch correction and English UI changes. The menu fix only changed command delivery. Formatting, tests, Clippy, and source-package builds are repeated for releases; the long measurement was not repeated after every UI-only change. These figures should not be presented as a new benchmark of every release.
 
-La muestra previa de AIDA64 duró diez segundos y registró aproximadamente 0,35 % CPU, 51 MiB residentes y 121 MiB privados comprometidos. Las duraciones y condiciones distintas impiden tratarla como comparación controlada o atribuir una mejora al inicio de Windows.
+The earlier AIDA64 sample lasted ten seconds and recorded about 0.35% CPU, 51 MiB resident memory, and 121 MiB private committed memory. Different durations and conditions prevent treating this as a controlled comparison or claiming a Windows boot improvement.
 
-## Pruebas pendientes en uso real
+## Outstanding real-world tests
 
-1. Tres reinicios físicos: iniciar sesión sin abrir manualmente la aplicación y ejecutar `scripts\Verify-Startup.ps1` desde el paquete para registrar cada arranque. No contar una ejecución manual de las tareas como evidencia de inicio automático.
-2. Suspender y reanudar; desconectar y reconectar el PM1562; comprobar cambios de DPI y ausencia de la pantalla.
-3. Comparación separada frente a AIDA64 bajo carga CPU/GPU reproducible, verificando unidades y la correspondencia física de ambos ventiladores. La lectura obtenida y la coincidencia con los sensores configurados no equivalen a una calibración independiente.
-4. Diez minutos por escenario bajo actividad GPU sostenida y una sesión de varias horas para descartar crecimiento continuo de memoria. La muestra normal no demuestra estabilidad durante días.
-5. Medición equivalente del tiempo hasta un escritorio utilizable antes de afirmar que mejoró el arranque de Windows.
+1. Three physical reboots: sign in without manually launching the tasks, then run `scripts\Verify-Startup.ps1` to record each boot. A manual task start is not evidence of automatic startup.
+2. Suspend/resume, PM1562 disconnect/reconnect, DPI changes, and an absent target display.
+3. Separate comparisons with AIDA64 under reproducible CPU/GPU load, checking units and physical fan correspondence. Matching configured sensor names is not an independent calibration.
+4. Ten-minute samples for sustained GPU activity and multi-hour sessions to investigate memory growth. Normal-use measurements do not establish days of stability.
+5. Equivalent time-to-usable-desktop measurements before attributing any improvement to Windows startup.
+6. Validation on hardware beyond the initial CPU, motherboard, and GPU configuration.
 
-El inicio de AIDA64 quedó deshabilitado después de superar el diagnóstico, la recuperación y el presupuesto de la muestra inicial. Su aplicación, configuración y XML de tarea se conservaron. El productor de IA continúa sin cambios; la revisión de ventanas de uso y autenticación corresponde a la etapa 1.1.
+On the original PC, AIDA64 startup was disabled after the initial diagnostic, recovery, and performance checks. Its application, configuration, and task XML were retained. The AI producer was unchanged.
 
-## Incidencia de entrada durante Fortnite
+## Input incident during Fortnite
 
-Durante una sesión se reportó pérdida de clics fuera de Fortnite. Una primera mejora coincidió con reiniciar SensorPanel; pruebas breves de panel solo, recolector solo y ambos juntos no reprodujeron el problema. En una segunda aparición el bloqueo continuó con ambos procesos de SensorPanel completamente cerrados. Alt+Tab no lo resolvió; Ctrl+Alt+Supr seguido de Esc recuperó los clics. Las ventanas seguían actualizándose visualmente y no se observó captura de ratón por SensorPanel en las lecturas realizadas.
+A session included lost clicks outside Fortnite. An initial improvement coincided with restarting CasePanel. Short tests of the panel alone, collector alone, and both together did not reproduce the issue. In a later occurrence the problem continued with both CasePanel processes completely closed. Alt+Tab did not restore clicks; Ctrl+Alt+Delete followed by Escape did. Windows continued updating visually, and the snapshots did not show CasePanel holding mouse capture.
 
-La causa exacta permanece sin confirmar. Esta incidencia no debe presentarse como corregida ni atribuirse de forma concluyente a un componente. Los registros del equipo se conservan fuera del repositorio público, en `artifacts`.
+The root cause remains unconfirmed. This incident must not be described as fixed or conclusively attributed to any component. Diagnostic records remain local under `artifacts`; they are not published.

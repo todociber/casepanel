@@ -34,24 +34,24 @@ impl Module {
             let dll = Dll::load(&path.join("PawnIOLib.dll"))?;
             let open: Open = dll
                 .function(b"pawnio_open\0")
-                .ok_or("PawnIO sin pawnio_open")?;
+                .ok_or("PawnIO is missing pawnio_open")?;
             let load: Load = dll
                 .function(b"pawnio_load\0")
-                .ok_or("PawnIO sin pawnio_load")?;
+                .ok_or("PawnIO is missing pawnio_load")?;
             let execute: Execute = dll
                 .function(b"pawnio_execute\0")
-                .ok_or("PawnIO sin pawnio_execute")?;
+                .ok_or("PawnIO is missing pawnio_execute")?;
             let mut handle = 0;
             let status = open(&mut handle);
             if status < 0 {
                 return Err(format!(
-                    "PawnIO acceso denegado/no instalado (HRESULT {status:08X}); ejecutar recolector elevado"
+                    "PawnIO access denied or not installed (HRESULT {status:08X}); run the collector elevated"
                 ));
             }
             let status = load(handle, blob.as_ptr(), blob.len());
             if status < 0 {
                 platform::CloseHandle(handle);
-                return Err(format!("Módulo firmado PawnIO rechazado ({status:08X})"));
+                return Err(format!("Signed PawnIO module rejected ({status:08X})"));
             }
             Ok(Self {
                 _dll: dll,
@@ -77,7 +77,7 @@ impl Module {
                 return Err(format!("PawnIO HRESULT {status:08X}"));
             }
             if returned != output {
-                return Err("Respuesta PawnIO incompleta".into());
+                return Err("Incomplete PawnIO response".into());
             }
             Ok(result)
         }
@@ -109,7 +109,7 @@ impl Chip {
     }
     fn discover(slot: u8) -> Result<Self, String> {
         let _lock =
-            BusLock::acquire("Global\\Access_ISABUS.HTP.Method").ok_or("Bus ISA ocupado")?;
+            BusLock::acquire("Global\\Access_ISABUS.HTP.Method").ok_or("ISA bus is busy")?;
         let module = Module::new(include_bytes!("../../vendor/pawnio/modules/LpcIO.bin"))?;
         module.call(b"ioctl_select_slot\0", &[slot as u64], 0)?;
         let port = if slot == 0 { 0x2e } else { 0x4e };
@@ -125,14 +125,14 @@ impl Chip {
         }
         let found = (|| {
             if !matches!(id, 0x8696 | 0x8695) {
-                return Err(format!("Chip ITE no admitido en slot {slot}: {id:04x}"));
+                return Err(format!("Unsupported ITE chip in slot {slot}: {id:04x}"));
             }
             module.call(b"ioctl_find_bars\0", &[], 0)?;
             module.call(b"ioctl_superio_outb\0", &[0x07, 0x04], 0)?;
             let base = read_word(0x60)?;
             std::thread::sleep(std::time::Duration::from_millis(1));
             if base != read_word(0x60)? || base < 0x100 || (base & 0xf007) != 0 {
-                return Err("Dirección ITE inválida".into());
+                return Err("Invalid ITE address".into());
             }
             Ok(base)
         })();
@@ -153,7 +153,7 @@ impl Chip {
         let value = Self::pio_read(&self.module, self.base + 6)?;
         let verified = Self::pio_read(&self.module, self.base + 5)?;
         if register != verified {
-            return Err("Índice ITE cambió durante lectura".into());
+            return Err("ITE index changed during the read".into());
         }
         Ok(value)
     }
@@ -165,7 +165,7 @@ impl Chip {
         }
         let vendor = self.read_register(0x58)?;
         if vendor != 0x90 && vendor != 0x7f {
-            return Err(format!("Vendor ITE inválido: {vendor:02x}"));
+            return Err(format!("Invalid ITE vendor: {vendor:02x}"));
         }
         let modes = self.read_register(0x0c)?;
         if index >= 3 && modes & (1 << (index + 1)) == 0 {
@@ -213,7 +213,7 @@ impl Hardware {
             || inventory.cpu_model != 0x44
             || !inventory.cpu_name.contains("9900X")
         {
-            return Err("CPU fuera de la lista validada: se omite acceso AMD de bajo nivel".into());
+            return Err("CPU is outside the validated list; skipping low-level AMD access".into());
         }
         let amd = Module::new(include_bytes!(
             "../../vendor/pawnio/modules/AMDFamily17.bin"
@@ -222,19 +222,13 @@ impl Hardware {
         let board = format!("board:{}:{}", inventory.board_vendor, inventory.board);
         let mut sensors = vec![
             Sensor::new(&cpu, "cpu.temperature", "CPU Tctl/Tdie", "°C", 1000),
-            Sensor::new(
-                &cpu,
-                "cpu.clock",
-                "CPU máxima frecuencia de núcleo",
-                "GHz",
-                1000,
-            ),
+            Sensor::new(&cpu, "cpu.clock", "CPU maximum core clock", "GHz", 1000),
             Sensor::new(&cpu, "cpu.power", "CPU Package", "W", 1000),
-            Sensor::new(&board, "cpu.fan", "CPU Fan / ITE primario #1", "RPM", 2000),
+            Sensor::new(&board, "cpu.fan", "CPU fan / primary ITE #1", "RPM", 2000),
             Sensor::new(
                 &board,
                 "board.case_fan",
-                "System Fan #4 / ITE secundario #3",
+                "System fan #4 / secondary ITE #3",
                 "RPM",
                 2000,
             ),
@@ -258,7 +252,7 @@ impl Hardware {
             }
         } else {
             for s in &mut sensors[3..] {
-                s.fail("Placa fuera de la lista validada");
+                s.fail("Motherboard is outside the validated list");
             }
         }
         Ok(Self {
@@ -278,13 +272,13 @@ impl Hardware {
                     if (-20. ..=120.).contains(&t) {
                         self.sensors[0].set(t);
                     } else {
-                        self.sensors[0].fail("Temperatura CPU fuera de rango");
+                        self.sensors[0].fail("CPU temperature is out of range");
                     }
                 }
                 Err(e) => self.sensors[0].fail(e),
             }
         } else {
-            self.sensors[0].fail("Bus PCI ocupado");
+            self.sensors[0].fail("PCI bus is busy");
         }
         if let Some(_affinity) = Affinity::set(0) {
             match (self.amd.read_msr(0xc0010299), self.amd.read_msr(0xc001029b)) {
@@ -300,12 +294,12 @@ impl Hardware {
                             self.sensors[2].set(w);
                         } else {
                             self.sensors[2]
-                                .fail("Contador reiniciado o intervalo de energía inválido");
+                                .fail("Energy counter reset or invalid sampling interval");
                         }
                     }
                     self.energy = Some((energy as u32, now));
                 }
-                _ => self.sensors[2].fail("No se pudo leer energía del paquete"),
+                _ => self.sensors[2].fail("Could not read package energy"),
             }
         }
         let mut max_mhz = 0u64;
@@ -319,7 +313,7 @@ impl Hardware {
         if (100..=7000).contains(&max_mhz) {
             self.sensors[1].set(max_mhz as f64 / 1000.);
         } else {
-            self.sensors[1].fail("Frecuencia CPU no disponible");
+            self.sensors[1].fail("CPU clock is unavailable");
         }
         if tick.is_multiple_of(2) {
             if let Some(_lock) = BusLock::acquire("Global\\Access_ISABUS.HTP.Method") {
@@ -332,12 +326,12 @@ impl Hardware {
                     {
                         Some(Ok(Some(rpm))) => self.sensors[s].set(rpm),
                         Some(Err(e)) => self.sensors[s].fail(e),
-                        _ => self.sensors[s].fail("Canal de ventilador no disponible"),
+                        _ => self.sensors[s].fail("Fan channel is unavailable"),
                     }
                 }
             } else {
                 for s in &mut self.sensors[3..] {
-                    s.fail("Bus ISA ocupado");
+                    s.fail("ISA bus is busy");
                 }
             }
         }
@@ -353,7 +347,7 @@ pub struct NvidiaMemory {
 impl NvidiaMemory {
     pub fn new(pci: super::nvml::Pci, identity: &str) -> Result<Self, String> {
         if (pci.id & 0xffff) != 0x10de || ((pci.id >> 16) & 0xff00) != 0x2c00 {
-            return Err("GPU fuera de la lista NVIDIA validada".into());
+            return Err("GPU is outside the validated NVIDIA list".into());
         }
         Ok(Self {
             module: Module::new(include_bytes!("../../vendor/pawnio/modules/Nvidia.bin"))?,
@@ -362,7 +356,7 @@ impl NvidiaMemory {
             sensor: Sensor::new(
                 identity,
                 "gpu.memory_temperature",
-                "Temperatura máxima memoria GPU",
+                "Maximum GPU memory temperature",
                 "°C",
                 1000,
             ),
@@ -383,10 +377,10 @@ impl NvidiaMemory {
                 if let Some(v) = value {
                     self.sensor.set(v as f64);
                 } else {
-                    self.sensor.fail("Sin temperaturas de memoria válidas");
+                    self.sensor.fail("No valid memory temperatures");
                 }
             }
-            Ok(_) => self.sensor.fail("Formato NVIDIA inesperado"),
+            Ok(_) => self.sensor.fail("Unexpected NVIDIA response format"),
             Err(e) => self.sensor.fail(e),
         }
         self.sensor.clone()

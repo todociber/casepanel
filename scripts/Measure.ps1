@@ -11,7 +11,7 @@ for($second=1;$second -le $Seconds;$second++) {
     $items=@()
     foreach($processId in $ProcessIds){
         $p=Get-Process -Id $processId -ErrorAction SilentlyContinue
-        if(-not $p){throw "El proceso $processId terminó antes de completar la medición."}
+        if(-not $p){throw "Process $processId exited before the measurement completed."}
         $at=$clock.Elapsed.TotalSeconds;$cpu=$p.TotalProcessorTime.TotalSeconds;$old=$previous[$processId]
         $items += [pscustomobject]@{id=$processId;cpu_percent=100*($cpu-$old.cpu)/($at-$old.at)/$cores;resident_mib=$p.WorkingSet64/1MB;private_commit_mib=$p.PrivateMemorySize64/1MB}
         $previous[$processId]=[pscustomobject]@{cpu=$cpu;at=$at}

@@ -8,6 +8,7 @@
 /vendor/pawnio/modules/*.bin
 /vendor/pawnio/release_*.zip
 /vendor/reference/nvml.h
+/PawnIO_setup.exe
 
 # Local credentials and signing material.
 .env

@@ -8,28 +8,28 @@ param(
     [switch]$DisableAidaAutostart
 )
 $ErrorActionPreference='Stop'
-if ($UserSid -notmatch '^S-1-5-21-(\d+-){3}\d+$') {throw 'SID de usuario no admitido.'}
+if ($UserSid -notmatch '^S-1-5-21-(\d+-){3}\d+$') {throw 'Unsupported user SID.'}
 $programFiles=[Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
 $installRoot=Join-Path $programFiles 'SensorPanel'
 $sourceExe=Join-Path $Source 'sensorpanel.exe'
 if (-not(Test-Path -LiteralPath $sourceExe)) {$sourceExe=Join-Path $Source 'target\release\sensorpanel.exe'}
-if (-not(Test-Path -LiteralPath $sourceExe)) {throw 'No se encontró sensorpanel.exe. Compile o extraiga el paquete Release.'}
+if (-not(Test-Path -LiteralPath $sourceExe)) {throw 'sensorpanel.exe was not found. Build the project or extract a release package.'}
 $expectedRoot=[IO.Path]::GetFullPath((Join-Path $programFiles 'SensorPanel'))
-if ([IO.Path]::GetFullPath($installRoot) -ne $expectedRoot) {throw 'Directorio de instalación inesperado.'}
+if ([IO.Path]::GetFullPath($installRoot) -ne $expectedRoot) {throw 'Unexpected installation directory.'}
 
 $pawnKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO'
 if (-not(Test-Path -LiteralPath $pawnKey)) {
     $installer=Join-Path $Source 'PawnIO_setup.exe'
     if (-not(Test-Path -LiteralPath $installer)) {$installer=Join-Path $Source '.tools\PawnIO_setup.exe'}
-    if (-not(Test-Path -LiteralPath $installer)) {throw 'Falta el instalador oficial PawnIO 2.2.0. Ejecute Prepare-PawnIO.ps1.'}
-    if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032') {throw 'Hash del instalador PawnIO incorrecto.'}
+    if (-not(Test-Path -LiteralPath $installer)) {throw 'The official PawnIO 2.2.0 installer is missing. Run Prepare-PawnIO.ps1.'}
+    if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '1F519A22E47187F70A1379A48CA604981C4FCF694F4E65B734AAA74A9FBA3032') {throw 'PawnIO installer hash mismatch.'}
     $signature=Get-AuthenticodeSignature -LiteralPath $installer
-    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=namazso.eu') {throw 'Firma oficial PawnIO no válida.'}
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=namazso.eu') {throw 'Invalid official PawnIO signature.'}
     $pawn=Start-Process -FilePath $installer -ArgumentList '-install','-silent' -WindowStyle Hidden -PassThru -Wait
-    if ($pawn.ExitCode -ne 0 -or -not(Test-Path -LiteralPath $pawnKey)) {throw 'PawnIO no se pudo instalar.'}
+    if ($pawn.ExitCode -ne 0 -or -not(Test-Path -LiteralPath $pawnKey)) {throw 'PawnIO could not be installed.'}
 }
 $pawn=Get-ItemProperty -LiteralPath $pawnKey
-if ([version]$pawn.DisplayVersion -lt [version]'2.2.0') {throw 'Se requiere PawnIO 2.2.0 o posterior. Actualice desde la distribución oficial.'}
+if ([version]$pawn.DisplayVersion -lt [version]'2.2.0') {throw 'PawnIO 2.2.0 or later is required. Update using the official distribution.'}
 
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 $acl=New-Object Security.AccessControl.DirectorySecurity
@@ -51,7 +51,7 @@ try {
     # Stopping a task returns before its process necessarily releases the image.
     foreach($oldProcess in $oldProcesses) {
         $process=Get-Process -Id $oldProcess.ProcessId -ErrorAction SilentlyContinue
-        if($process -and -not $process.WaitForExit(15000)) {throw 'SensorPanel no terminó en 15 segundos; se cancela la sustitución.'}
+        if($process -and -not $process.WaitForExit(15000)) {throw 'SensorPanel did not exit within 15 seconds; replacement cancelled.'}
     }
     for($copyAttempt=0;$copyAttempt -lt 20;$copyAttempt++) {
         try {Copy-Item -LiteralPath $sourceExe -Destination $installedExe -Force;break}
@@ -63,7 +63,7 @@ try {
 }
 $sourceHash=(Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash
 if ((Get-FileHash -LiteralPath (Join-Path $installRoot 'sensorpanel.exe')) -ne $null) {
-    if ((Get-FileHash -LiteralPath (Join-Path $installRoot 'sensorpanel.exe') -Algorithm SHA256).Hash -ne $sourceHash) {throw 'Copia del ejecutable inválida.'}
+    if ((Get-FileHash -LiteralPath (Join-Path $installRoot 'sensorpanel.exe') -Algorithm SHA256).Hash -ne $sourceHash) {throw 'Executable copy verification failed.'}
 }
 foreach($name in 'README.md','THIRD-PARTY-NOTICES.md','LICENSE') {if(Test-Path -LiteralPath (Join-Path $Source $name)){Copy-Item -LiteralPath (Join-Path $Source $name) -Destination $installRoot -Force}}
 $sourceDocs=Join-Path $Source 'docs'
@@ -78,13 +78,13 @@ foreach($mode in @(@('Panel','--panel','Limited'),@('Collector','--collector','H
     $action=New-ScheduledTaskAction -Execute (Join-Path $installRoot 'sensorpanel.exe') -Argument $mode[1] -WorkingDirectory $installRoot
     $modeSettings=$settings
     if($mode[0] -eq 'Collector'){$modeSettings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable}
-    Register-ScheduledTask -TaskPath '\SensorPanel\' -TaskName $mode[0] -Action $action -Principal $principal -Trigger $trigger -Settings $modeSettings -Description 'SensorPanel nativo, sin comprobación automática de actualizaciones.' -Force | Out-Null
+    Register-ScheduledTask -TaskPath '\SensorPanel\' -TaskName $mode[0] -Action $action -Principal $principal -Trigger $trigger -Settings $modeSettings -Description 'Native CasePanel hardware monitor; updates are checked manually.' -Force | Out-Null
     if($StageOnly){Disable-ScheduledTask -TaskPath '\SensorPanel\' -TaskName $mode[0] | Out-Null}
 }
 if($DisableAidaAutostart){
     $old=Get-ScheduledTask -TaskName 'AIDA64 AutoStart' -ErrorAction SilentlyContinue
     if($old){Export-ScheduledTask -TaskName $old.TaskName -TaskPath $old.TaskPath | Set-Content -LiteralPath (Join-Path $installRoot 'AIDA64-AutoStart-backup.xml') -Encoding utf8;Disable-ScheduledTask -InputObject $old | Out-Null;Stop-ScheduledTask -InputObject $old}
 }
-[pscustomobject]@{version='0.1.0';exe_sha256=$sourceHash;user_sid=$UserSid;delay_seconds=$DelaySeconds;staged=[bool]$StageOnly;pawnio=$pawn.DisplayVersion;installed_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installRoot 'installation.json') -Encoding utf8
-Write-Output "Instalado en $installRoot"
-Write-Output 'Tareas: \SensorPanel\Panel y \SensorPanel\Collector. No se modificó la tarea de uso de IA.'
+[pscustomobject]@{version='0.1.1';exe_sha256=$sourceHash;user_sid=$UserSid;delay_seconds=$DelaySeconds;staged=[bool]$StageOnly;pawnio=$pawn.DisplayVersion;installed_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installRoot 'installation.json') -Encoding utf8
+Write-Output "Installed in $installRoot"
+Write-Output 'Tasks: \SensorPanel\Panel and \SensorPanel\Collector. The external AI usage task was preserved.'

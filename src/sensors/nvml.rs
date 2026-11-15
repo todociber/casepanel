@@ -72,28 +72,30 @@ impl Nvml {
             let dll = Dll::load(Path::new("C:\\Windows\\System32\\nvml.dll"))?;
             let init: Init = dll
                 .function(b"nvmlInit_v2\0")
-                .ok_or("NVML no ofrece inicialización")?;
-            let shutdown: Init = dll.function(b"nvmlShutdown\0").ok_or("NVML incompleta")?;
+                .ok_or("NVML initialization is unavailable")?;
+            let shutdown: Init = dll
+                .function(b"nvmlShutdown\0")
+                .ok_or("Incomplete NVML interface")?;
             let count: Count = dll
                 .function(b"nvmlDeviceGetCount_v2\0")
-                .ok_or("NVML sin enumeración")?;
+                .ok_or("NVML device enumeration is unavailable")?;
             let handle: Handle = dll
                 .function(b"nvmlDeviceGetHandleByIndex_v2\0")
-                .ok_or("NVML sin dispositivos")?;
+                .ok_or("NVML device handles are unavailable")?;
             let uuid: Text = dll
                 .function(b"nvmlDeviceGetUUID\0")
-                .ok_or("NVML sin identidad persistente")?;
+                .ok_or("NVML persistent device identity is unavailable")?;
             let name: Text = dll
                 .function(b"nvmlDeviceGetName\0")
-                .ok_or("NVML sin nombre")?;
+                .ok_or("NVML device name is unavailable")?;
             let status = init();
             if status != 0 {
-                return Err(format!("NVML inicialización: {status}"));
+                return Err(format!("NVML initialization: {status}"));
             }
             let mut n = 0;
             if count(&mut n) != 0 || n == 0 {
                 shutdown();
-                return Err("No hay GPU NVIDIA disponible".into());
+                return Err("No NVIDIA GPU is available".into());
             }
             let mut chosen = None;
             for i in 0..n.min(16) {
@@ -115,26 +117,26 @@ impl Nvml {
             }
             let Some((device, label)) = chosen else {
                 shutdown();
-                return Err("No se pudo abrir GPU NVIDIA".into());
+                return Err("Could not open the NVIDIA GPU".into());
             };
             let mut id = [0i8; 128];
             if uuid(device, id.as_mut_ptr(), 128) != 0 {
                 shutdown();
-                return Err("GPU sin UUID; no se asociará por índice".into());
+                return Err("GPU has no UUID; it will not be bound by index".into());
             }
             let identity = format!("nvidia:{}", CStr::from_ptr(id.as_ptr()).to_string_lossy());
             let sensors = [
-                ("gpu.temperature", "Temperatura GPU", "°C", 1000),
-                ("gpu.load", "Carga GPU", "%", 1000),
-                ("gpu.clock", "Frecuencia GPU", "MHz", 1000),
-                ("gpu.power", "Consumo GPU", "W", 1000),
-                ("gpu.fan", "Ventilador GPU 1 (reportado)", "RPM", 2000),
-                ("gpu.vram.used", "VRAM usada", "GiB", 1000),
-                ("gpu.vram.free", "VRAM libre", "GiB", 1000),
-                ("gpu.vram.load", "Utilización VRAM", "%", 1000),
+                ("gpu.temperature", "GPU temperature", "°C", 1000),
+                ("gpu.load", "GPU load", "%", 1000),
+                ("gpu.clock", "GPU clock", "MHz", 1000),
+                ("gpu.power", "GPU power", "W", 1000),
+                ("gpu.fan", "GPU fan 1 (reported)", "RPM", 2000),
+                ("gpu.vram.used", "VRAM used", "GiB", 1000),
+                ("gpu.vram.free", "VRAM free", "GiB", 1000),
+                ("gpu.vram.load", "VRAM usage", "%", 1000),
                 (
                     "gpu.memory_temperature",
-                    "Temperatura memoria GPU",
+                    "GPU memory temperature",
                     "°C",
                     1000,
                 ),
@@ -177,13 +179,13 @@ impl Nvml {
             {
                 self.sensors[0].set(value as f64);
             } else {
-                self.sensors[0].fail("Temperatura no soportada por NVML");
+                self.sensors[0].fail("Temperature is not supported by NVML");
             }
             let mut util = Utilization::default();
             if self.util.is_some_and(|f| f(self.device, &mut util) == 0) {
                 self.sensors[1].set(util.gpu as f64);
             } else {
-                self.sensors[1].fail("Carga no disponible");
+                self.sensors[1].fail("Load is unavailable");
             }
             if self
                 .clock
@@ -191,12 +193,12 @@ impl Nvml {
             {
                 self.sensors[2].set(value as f64);
             } else {
-                self.sensors[2].fail("Frecuencia no disponible");
+                self.sensors[2].fail("Clock is unavailable");
             }
             if self.power.is_some_and(|f| f(self.device, &mut value) == 0) {
                 self.sensors[3].set(value as f64 / 1000.);
             } else {
-                self.sensors[3].fail("Consumo no disponible");
+                self.sensors[3].fail("Power is unavailable");
             }
             if tick.is_multiple_of(2) {
                 let mut fan = Fan {
@@ -206,7 +208,8 @@ impl Nvml {
                 if self.fan.is_some_and(|f| f(self.device, &mut fan) == 0) {
                     self.sensors[4].set(fan.speed as f64);
                 } else {
-                    self.sensors[4].fail("RPM no disponibles; no se convierten porcentajes a RPM");
+                    self.sensors[4]
+                        .fail("RPM unavailable; fan percentages are not converted to RPM");
                 }
             }
             let mut mem = Memory::default();
@@ -216,7 +219,7 @@ impl Nvml {
                 self.sensors[7].set(mem.used as f64 / mem.total as f64 * 100.);
             } else {
                 for s in &mut self.sensors[5..8] {
-                    s.fail("Memoria global no disponible por NVML/WDDM");
+                    s.fail("Global memory is unavailable through NVML/WDDM");
                 }
             }
             let mut field = Field {
@@ -238,10 +241,10 @@ impl Nvml {
                 if (-20. ..=150.).contains(&v) {
                     self.sensors[8].set(v);
                 } else {
-                    self.sensors[8].fail("Temperatura memoria inválida");
+                    self.sensors[8].fail("Invalid memory temperature");
                 }
             } else {
-                self.sensors[8].fail("NVML no expone temperatura de memoria");
+                self.sensors[8].fail("NVML does not expose memory temperature");
             }
             self.sensors.clone()
         }

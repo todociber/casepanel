@@ -115,7 +115,7 @@ pub fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
         if MoveFileExW(wide(from).as_ptr(), wide(to).as_ptr(), 1 | 8) != 0 {
             Ok(())
         } else {
-            Err(format!("No se pudo guardar perfil: {}", GetLastError()))
+            Err(format!("Could not save profile: {}", GetLastError()))
         }
     }
 }
@@ -189,7 +189,7 @@ pub fn user_sid() -> Result<String, String> {
     unsafe {
         let mut token = 0;
         if OpenProcessToken(GetCurrentProcess(), 8, &mut token) == 0 {
-            return Err("No se pudo consultar usuario".into());
+            return Err("Could not query the current user".into());
         }
         let mut n = 0;
         GetTokenInformation(token, 1, std::ptr::null_mut(), 0, &mut n);
@@ -198,12 +198,12 @@ pub fn user_sid() -> Result<String, String> {
         let ok = GetTokenInformation(token, 1, data.as_mut_ptr().cast(), n, &mut n);
         CloseHandle(token);
         if ok == 0 {
-            return Err("No se pudo leer SID".into());
+            return Err("Could not read the user SID".into());
         }
         let sid = *(data.as_ptr() as *const *const c_void);
         let mut text = std::ptr::null_mut();
         if ConvertSidToStringSidW(sid, &mut text) == 0 {
-            return Err("SID inválido".into());
+            return Err("Invalid SID".into());
         }
         let mut len = 0;
         while *text.add(len) != 0 && len < 256 {
@@ -222,7 +222,7 @@ impl Dll {
             let h = LoadLibraryExW(wide(path).as_ptr(), 0, 0x100 | 0x800);
             if h == 0 {
                 Err(format!(
-                    "No se pudo cargar {} ({})",
+                    "Could not load {} ({})",
                     path.display(),
                     GetLastError()
                 ))
@@ -299,7 +299,7 @@ impl Instance {
             let name = wide(format!("Local\\SensorPanel-{tag}-{}", user_sid()?));
             let h = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
             if h == 0 {
-                return Err("No se pudo crear bloqueo de instancia".into());
+                return Err("Could not create the single-instance lock".into());
             }
             if GetLastError() == 183 {
                 CloseHandle(h);

@@ -1,31 +1,36 @@
-# Componentes y atribuciones
+# Third-party components and notices
 
 ## LibreHardwareMonitor
 
-Las secuencias de acceso y decodificación de AMD Zen 5 e ITE en `src/sensors/pawnio.rs` se adaptaron de LibreHardwareMonitor, versión v0.9.6: Amd17Cpu.cs, IT87XX.cs, LpcIO.cs, LpcIO de PawnIo, Mutexes.cs y SuperIOHardware.cs.
+AMD Zen 5 and ITE access/decoding sequences in `src/sensors/pawnio.rs` were adapted from LibreHardwareMonitor v0.9.6: Amd17Cpu.cs, IT87XX.cs, LpcIO.cs, PawnIo LpcIO, Mutexes.cs, and SuperIOHardware.cs.
 
-Copyright LibreHardwareMonitor and Contributors; portions Copyright Michael Möller and Contributors. Mozilla Public License 2.0. El código adaptado conserva esta licencia. Referencias y texto de licencia en `vendor/reference`. Proyecto: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+Copyright LibreHardwareMonitor and Contributors; portions Copyright Michael Möller and Contributors. Mozilla Public License 2.0. Adapted code retains this license. Reference files and license text are in `vendor/reference`.
 
-## PawnIO y módulos
+Project: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
 
-Controlador oficial PawnIO 2.2.0, distribuido sin modificaciones por namazso: https://pawnio.eu/ y https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0
+## PawnIO and modules
 
-Instalador SHA-256: `1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032`.
+Official PawnIO 2.2.0 installer, redistributed without modification by permission of its publisher's distribution terms:
 
-Módulos oficiales firmados, release 0.2.11: https://github.com/namazso/PawnIO.Modules/releases/tag/0.2.11
+- https://pawnio.eu/
+- https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0
+- Installer SHA-256: `1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032`
 
-Archivo de distribución SHA-256: `43608cb89bc84247fef1368a139013f7d043e17db6d6c8dfc9b46bf0905a81f4`.
+Only the unmodified signed `AMDFamily17.bin`, `LpcIO.bin`, and `Nvidia.bin` modules from release 0.2.11 are embedded. Module distribution SHA-256: `43608cb89bc84247fef1368a139013f7d043e17db6d6c8dfc9b46bf0905a81f4`.
 
-La aplicación incorpora sin modificaciones solamente AMDFamily17.bin, LpcIO.bin y Nvidia.bin. Los módulos se distribuyen bajo LGPL 2.1; su texto se incluye en `vendor/pawnio/modules/COPYING`. Código fuente y versiones: https://github.com/namazso/PawnIO.Modules/tree/0.2.11 . La distribución oficial firmada de PawnIO tiene sus propios términos; su instalador se incluye sin modificaciones. PawnIOLib se carga dinámicamente desde la instalación oficial.
+The modules use LGPL 2.1; its text is included as `vendor/pawnio/modules/COPYING` and in release licenses. Corresponding module source is included in release packages as the unmodified upstream source archive, pinned to commit `52a7e536dff3e53c96917a28caac5e0fa6510696`. CasePanel source is included so the application can be rebuilt with replacement module bytes. The official driver enforces its own module-signature policy.
 
-Para preparar una copia del repositorio, `scripts/Prepare-Modules.ps1` obtiene los tres binarios desde la distribución oficial fijada y verifica el archivo antes de extraerlos. Los binarios descargados y el instalador quedan fuera del historial Git. Se conservan los avisos de licencia y los enlaces al código fuente de sus autores.
+The repository's preparation script retrieves the pinned official distribution and verifies it before extraction. Downloaded binaries and installers remain outside Git. PawnIOLib loads dynamically from the official installation. The signed official binary edition has its own terms; the open-source driver and library have separate licenses.
 
-Código fuente del controlador: https://github.com/namazso/PawnIO (GPL 2 con excepción). Código fuente de PawnIOLib en ese repositorio (LGPL 2.1). Condiciones de integración: https://github.com/namazso/PawnIO.Modules/wiki/Using-PawnIO-Modules
+- Modules and source: https://github.com/namazso/PawnIO.Modules/tree/0.2.11
+- Driver source: https://github.com/namazso/PawnIO (GPL 2 with exception)
+- PawnIOLib source: the same repository (LGPL 2.1)
+- Integration and distribution information: https://github.com/namazso/PawnIO.Modules/wiki/Using-PawnIO-Modules
 
 ## NVIDIA
 
-NVML se carga desde el controlador gráfico instalado. No se distribuyen DLL de NVIDIA. Referencia de interfaces: https://docs.nvidia.com/deploy/nvml-api/ . El encabezado de referencia descargado desde NVIDIA/go-nvml conserva sus avisos originales y se mantiene como referencia local fuera de Git; no se incorpora como código compilado.
+NVML loads from the installed NVIDIA display driver. NVIDIA DLLs are not redistributed. Interface reference: https://docs.nvidia.com/deploy/nvml-api/ . A locally downloaded NVIDIA/go-nvml reference header retains its original notices, stays outside Git, and is not compiled into the application.
 
-## Rust y crates
+## Rust crates
 
-`windows` y `windows-numerics`: Microsoft, MIT/Apache-2.0. `serde` y `serde_json`: MIT/Apache-2.0. `sha2`: MIT/Apache-2.0. Las versiones exactas y dependencias transitivas constan en Cargo.lock. Las fuentes y licencias pueden obtenerse de crates.io y los repositorios indicados en sus manifiestos.
+`windows` and `windows-numerics`: Microsoft, MIT/Apache-2.0. `serde`, `serde_json`, and `sha2`: MIT/Apache-2.0. Exact versions and transitive dependencies are fixed in Cargo.lock. Release packages include available license/notice files from the resolved crates. Their source and manifests are available from crates.io and the upstream repositories identified in those manifests.

@@ -125,17 +125,7 @@ impl Default for Config {
             add(id, Rectangle, x, y, w, h, "", "", 1., "", 100.);
         }
         add(
-            "ai_title",
-            Text,
-            50.,
-            23.,
-            500.,
-            50.,
-            "AI TOKENS",
-            "",
-            38.,
-            "",
-            100.,
+            "ai_title", Text, 50., 23., 500., 50., "AI USAGE", "", 38., "", 100.,
         );
         for (name, label, key, y) in [
             ("claude", "CLAUDE 5H", "ai.claude.5h", 85.),
@@ -188,7 +178,7 @@ impl Default for Config {
             90.,
             220.,
             48.,
-            "Fans Case",
+            "Case fans",
             "",
             40.,
             "",
@@ -230,7 +220,7 @@ impl Default for Config {
             182.,
             680.,
             22.,
-            "IA · valores reportados por el script local",
+            "AI usage reported by the external script",
             "",
             16.,
             "",
@@ -419,19 +409,19 @@ impl Default for Config {
             785.,
             580.,
             55.,
-            "CONSUMO / TEMPERATURA",
+            "POWER / TEMPERATURE",
             "",
             37.,
             "",
             100.,
         );
         for (id, key, label, y, unit) in [
-            ("cpu_power", "cpu.power", "CPU CONSUMO", 850., " W"),
-            ("gpu_power", "gpu.power", "GPU CONSUMO", 910., " W"),
+            ("cpu_power", "cpu.power", "CPU POWER", 850., " W"),
+            ("gpu_power", "gpu.power", "GPU POWER", 910., " W"),
             (
                 "gpu_memory_temp",
                 "gpu.memory_temperature",
-                "MEMORIA GPU",
+                "GPU MEMORY TEMP",
                 970.,
                 "°C",
             ),
@@ -484,14 +474,14 @@ impl Default for Config {
 impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != 1 {
-            return Err("Versión de perfil no soportada".into());
+            return Err("Unsupported profile version".into());
         }
         if !(320. ..=16384.).contains(&self.canvas_width)
             || !(200. ..=16384.).contains(&self.canvas_height)
             || self.widgets.len() > 256
             || self.startup_delay_seconds > 60
         {
-            return Err("Tamaño, cantidad de widgets o demora inválidos".into());
+            return Err("Invalid canvas size, widget count, or startup delay".into());
         }
         let mut ids = BTreeSet::new();
         for w in &self.widgets {
@@ -515,7 +505,7 @@ impl Config {
                 || parse_color(&w.color).is_none()
                 || parse_color(&w.background).is_none()
             {
-                return Err(format!("Widget inválido: {}", w.id));
+                return Err(format!("Invalid widget: {}", w.id));
             }
         }
         Ok(())
@@ -523,7 +513,7 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self, String> {
         let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
         if metadata.len() > 2 * 1024 * 1024 {
-            return Err("Perfil demasiado grande".into());
+            return Err("Profile is too large".into());
         }
         let c: Self = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
@@ -539,10 +529,17 @@ impl Config {
             Err(e) => {
                 let backup = backup_path(path);
                 match Self::load(&backup) {
-                    Ok(c) => (c, Some(format!("Perfil dañado; respaldo recuperado: {e}"))),
+                    Ok(c) => (
+                        c,
+                        Some(format!(
+                            "Profile is damaged; recovered the valid backup: {e}"
+                        )),
+                    ),
                     Err(_) => (
                         Self::default(),
-                        Some(format!("Perfil no cargado; se usa plantilla temporal: {e}")),
+                        Some(format!(
+                            "Profile could not be loaded; using a temporary default: {e}"
+                        )),
                     ),
                 }
             }

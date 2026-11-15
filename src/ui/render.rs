@@ -197,7 +197,7 @@ impl Renderer {
                     DWRITE_FONT_STYLE_NORMAL,
                     DWRITE_FONT_STRETCH_NORMAL,
                     w.font_size * scale,
-                    w!("es-SV"),
+                    w!("en-US"),
                 )
                 .map_err(|e| e.to_string())?;
             let align = match w.align.as_str() {
@@ -235,7 +235,7 @@ impl Renderer {
                 .GetSize(&mut width, &mut height)
                 .map_err(|e| e.to_string())?;
             if width == 0 || height == 0 || width > 4096 || height > 4096 {
-                return Err("Imagen excesiva o vacía".into());
+                return Err("Image is empty or exceeds the size limit".into());
             }
             let converter = self
                 .wic
@@ -329,7 +329,7 @@ impl Renderer {
                             _ => {
                                 let gpu = resolve(c, store, "gpu.temperature")
                                     .map(|s| s.label.split(": ").next().unwrap_or("GPU"))
-                                    .unwrap_or("NVIDIA GeForce RTX 5080");
+                                    .unwrap_or("not detected");
                                 w.text
                                     .replace("{cpu_name}", &self.cpu_name)
                                     .replace("{gpu_name}", gpu)

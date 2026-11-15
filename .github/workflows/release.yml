@@ -1,0 +1,78 @@
+name: Build Windows release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.100.0 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare signed modules
+        shell: pwsh
+        run: .\scripts\Prepare-Modules.ps1
+      - name: Check formatting, tests, and Clippy
+        shell: pwsh
+        run: |
+          .\scripts\dev.ps1 fmt --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\scripts\dev.ps1 test --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\scripts\dev.ps1 -Strict clippy --locked --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and package
+        shell: pwsh
+        run: |
+          $expected = ''
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $expected = $env:GITHUB_REF_NAME.Substring(1) }
+          .\scripts\Package.ps1 -ExpectedVersion $expected
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: casepanel-windows
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/CasePanel-*-windows-x64.zip
+            dist/CasePanel-*-source.zip
+            dist/sensorpanel.exe
+            dist/SHA256SUMS.txt
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: casepanel-windows
+          path: release-assets
+      - name: Publish preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --verify-tag --prerelease \
+            --title "CasePanel $RELEASE_TAG — Windows preview" \
+            --notes-file "docs/releases/$RELEASE_TAG.md"

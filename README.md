@@ -1,26 +1,23 @@
 # CasePanel
 
-A native Windows hardware monitoring panel built with Rust.
+A native Windows hardware monitoring panel built with Rust, Win32, Direct2D, and DirectWrite.
 
-Primera entrega pública: **0.1.0**. El ejecutable y las tareas de Windows conservan el nombre `SensorPanel`. El soporte de hardware inicial y las comprobaciones pendientes están descritos más abajo; esta entrega todavía requiere validación prolongada en otros equipos.
+**[Download Windows builds](https://github.com/todociber/casepanel/releases)** · [Architecture](docs/ARCHITECTURE.md) · [Validation results](docs/VALIDATION.md)
 
-Panel para Windows 11 x64 desarrollado en Rust, Win32, Direct2D y DirectWrite. Direct2D dibuja por software a 1 Hz para reducir la memoria reservada por los controladores gráficos. No carga un navegador ni un runtime .NET. Un mismo ejecutable funciona como panel sin privilegios o como recolector separado.
+CasePanel displays hardware readings on a dedicated monitor using a configurable layout. It draws once per second, keeps a bounded history, and runs its hardware collector in a separate process. Rendering uses software Direct2D; no browser or .NET runtime is required.
 
-## Uso
+## Download and install
 
-La instalación normal utiliza `C:\Program Files\SensorPanel\sensorpanel.exe`. El panel aparece en el PM1562 al abrir sesión, detrás de las otras ventanas y sin tomar el foco. Puedes utilizar aplicaciones en esa pantalla y dejar que cubran el panel normalmente. Clic derecho sobre el panel o sobre su icono en la bandeja permite abrir el editor o salir. «Salir» cierra también el recolector hasta el próximo inicio de sesión.
+This is an early **0.1.1 preview** for Windows 11 x64. Low-level sensor support has been validated on one hardware configuration; see the support table and outstanding tests below.
 
-El editor permite seleccionar widgets en la lista o en la vista previa, arrastrarlos y redimensionarlos desde la esquina inferior derecha. Las propiedades se aplican con **Aplicar propiedades**. **Guardar** persiste el perfil; **Importar** y **Exportar** utilizan archivos JSON. Las capas superiores se dibujan al final.
+| Release asset | Purpose |
+|---|---|
+| `CasePanel-0.1.1-windows-x64.zip` | Recommended package: application, setup scripts, verified official PawnIO installer, documentation, licenses, and source |
+| `sensorpanel.exe` | Application executable for manual use; it is not a setup program and does not install dependencies or startup tasks |
+| `CasePanel-0.1.1-source.zip` | Source for this build, including the corresponding PawnIO module source |
+| `SHA256SUMS.txt` | SHA-256 checksums of the downloadable files |
 
-Widgets: texto, lectura numérica, barra, medidor circular, imagen, gráfico de líneas, rectángulo y reloj. Las unidades admiten conversiones °C/°F, GHz/MHz, GiB/MiB/GB y W/mW; los límites de escala se expresan en la unidad elegida. Los gráficos conservan como máximo diez minutos en RAM. Los valores ausentes muestran `—`; una lectura antigua se atenúa y lleva `*`. Los porcentajes de IA son valores reportados por un productor externo: el panel no confirma la antigüedad real de cada consulta.
-
-El perfil se guarda en `%LOCALAPPDATA%\SensorPanel\profile.json`; el respaldo válido anterior utiliza `.json.bak`. Si ambos fallan, se usa una plantilla temporal sin sobrescribirlos automáticamente. La escala base es 1920 × 1200, conservando proporciones con otras resoluciones. El panel se oculta cuando falta la pantalla seleccionada.
-
-Los títulos de la plantilla admiten `{cpu_name}`, `{gpu_name}` y `{memory_name}`. Las imágenes se leen desde rutas locales, hasta 4096 × 4096; se conservan como máximo cuatro imágenes decodificadas. Los perfiles personalizados pueden consumir más memoria que la plantilla.
-
-## Instalación
-
-Desde una PowerShell **como administrador**, dentro del proyecto o del paquete Release:
+Extract the Windows ZIP, open PowerShell **as administrator** in the extracted folder, and run:
 
 ```powershell
 .\scripts\Install.ps1
@@ -28,70 +25,93 @@ Start-ScheduledTask -TaskPath '\SensorPanel\' -TaskName 'Collector'
 Start-ScheduledTask -TaskPath '\SensorPanel\' -TaskName 'Panel'
 ```
 
-El instalador copia el ejecutable a una carpeta protegida y registra dos tareas con el usuario actual: panel con privilegios limitados y recolector con privilegios elevados. Se ejecutan cinco segundos después de iniciar sesión. El panel supervisa la conexión y solicita hasta tres reinicios de la tarea del recolector por sesión, separados por un minuto; no solicita reinicios mientras la pantalla está ausente o apagada. La tarea del panel también tiene tres reintentos configurados en Windows. No tienen límite de tiempo de ejecución.
+Installation copies the application to `C:\Program Files\SensorPanel` and creates two Task Scheduler tasks. The panel runs without elevation; the collector runs elevated. Both start five seconds after you **sign in**, with no daily UAC prompt. Scheduled tasks are managed in **Task Scheduler → Task Scheduler Library → SensorPanel**, rather than Task Manager's Startup apps list.
 
-PawnIO 2.2.0 debe estar instalado. El paquete incluye el instalador oficial, verificado por SHA-256 y firma Authenticode. `scripts\Prepare-PawnIO.ps1` permite obtenerlo de su distribución oficial si falta. Se utiliza la edición firmada, conservando las protecciones de Windows.
+The installed executable, task names, and profile directory retain the `SensorPanel` name for compatibility. The application executable is currently unsigned; the bundled, unmodified PawnIO installer is separately Authenticode-signed by its publisher. Windows may display an executable reputation warning.
 
-Opciones de instalación:
+The default layout targets a **PM1562, 1920 × 1200**. Use the tray icon to open the editor and select another display. The panel opens behind other applications without taking focus. If its display is missing, it hides and pauses collection; the tray remains available.
+
+Install options:
 
 ```powershell
-# Registrar las tareas deshabilitadas para una revisión previa.
+# Register disabled tasks for review.
 .\scripts\Install.ps1 -StageOnly
-# Cambiar la demora y deshabilitar el inicio anterior de AIDA64.
+# Change the logon delay; optionally back up and disable the old AIDA64 task.
 .\scripts\Install.ps1 -DelaySeconds 5 -DisableAidaAutostart
 ```
 
-La tarea `AIDA64 AI Usage Monitor` y el script `C:\Tools\aida64-ai-usage.ps1` se conservan. El instalador solo modifica `AIDA64 AutoStart` cuando se indica `-DisableAidaAutostart`; antes guarda su XML en la carpeta de instalación.
+To remove CasePanel, run `C:\Program Files\SensorPanel\Uninstall.ps1` as administrator. Profiles, the shared PawnIO installation, and any AIDA64 task backup are preserved.
 
-Para retirar la aplicación, ejecutar `C:\Program Files\SensorPanel\Uninstall.ps1` como administrador. Conserva perfiles, PawnIO y el respaldo de AIDA64. Para volver al inicio anterior, habilitar y arrancar `AIDA64 AutoStart` desde el Programador de tareas.
+## Editor and profiles
 
-## Sensores y límites
+Right-click the panel or its tray icon to open the editor or exit. **Exit** closes both processes until the next sign-in or manual launch.
 
-- Windows: carga CPU, RAM usada/disponible y reloj. Información SMBIOS al iniciar.
-- NVIDIA: NVML del controlador instalado, cargada por ruta absoluta. Carga, temperatura, frecuencia, consumo, VRAM global y RPM reportadas. La disponibilidad depende del controlador.
-- Ryzen 9 9900X, familia `1A`, modelo `44`: módulo firmado AMDFamily17; temperatura Tctl/Tdie, frecuencia máxima de los núcleos consultados y potencia del paquete calculada a partir del contador de energía.
-- Gigabyte X870 AORUS ELITE WIFI7: ITE IT8696E primario, IT87952E secundario. CPU Fan: canal 1 primario. System Fan #4: canal 3 secundario. El selector del editor permite asociar estos sensores.
-- Memoria NVIDIA: campo NVML 82 cuando está disponible; módulo firmado Nvidia de PawnIO en la familia Blackwell validada como alternativa. El valor alternativo representa la temperatura máxima entre canales de memoria válidos.
-- IA: lectura de `DW1` (Claude) y `DW3` (Codex) en `HKCU\Software\FinalWire\AIDA64\ImportValues`. Se consultan también sus textos de estado. No se leen credenciales ni se efectúan llamadas a servicios de IA desde el panel o el recolector.
+Select a widget in the list or preview, drag it to move it, and drag its lower-right corner to resize it. **Apply properties** applies the fields; **Save** writes the profile. **Import** and **Export** use versioned JSON. Higher layers are drawn last.
 
-El antiguo rótulo «GPU HOTSPOT» se reemplazó por **MEMORIA GPU**, conforme al sensor real de la configuración de AIDA64.
+Widgets include text, numeric values, bars, circular gauges, images, line charts, rectangles, and clocks. Configure the sensor, label, unit, decimals, colors, font, alignment, and scale. Supported conversions include °C/°F, GHz/MHz, GiB/MiB/GB, and W/mW. Chart history is limited to ten minutes. Images are limited to 4096 × 4096 pixels, with at most four decoded images cached.
 
-El recolector utiliza únicamente módulos firmados y secuencias de lectura; las escrituras de índices necesarias no cambian PWM, voltajes ni frecuencias. Respeta los mutex de bus utilizados por LibreHardwareMonitor. No aplica registros específicos a CPU o placas desconocidas. La separación de procesos protege la interfaz frente a fallos del recolector; ningún diseño en modo usuario puede garantizar que un controlador de kernel nunca falle.
+Profiles live at `%LOCALAPPDATA%\SensorPanel\profile.json`. The previous valid file is backed up as `.json.bak`. If neither file is valid, a temporary default is used without silently overwriting them. The base canvas scales proportionally to the display. Title tokens include `{cpu_name}`, `{gpu_name}`, and `{memory_name}`. Existing custom profile labels are preserved; newly created default profiles use English.
 
-Las asociaciones guardan la identidad del dispositivo. Un cambio de hardware conserva el diseño y requiere reasignar el sensor correspondiente. El protocolo IPC tiene versión, tamaño acotado y ACL para el usuario y SYSTEM; no acepta registros, módulos, rutas ni órdenes de control de hardware. Un watchdog termina solo el recolector si una consulta supera diez segundos.
+Missing readings display `—`. Stale readings retain their last value, appear dimmed, and carry `*`. Zero RPM is valid. Bindings include device identity: replacing hardware preserves the layout and requires reassignment of the affected sensors.
 
-## Desarrollo y diagnóstico
+## Initial hardware support
 
-Rust 1.100.0, objetivo `x86_64-pc-windows-msvc`, herramientas de enlace MSVC y Windows SDK. Puede usarse una Developer PowerShell de Visual Studio; `scripts\dev.ps1` reconoce también las herramientas locales de este workspace. `Cargo.lock` fija las dependencias. El CRT se enlaza estáticamente.
+| Provider | Readings and limits |
+|---|---|
+| Windows | CPU usage, used/available RAM, clock, and startup hardware identification |
+| NVIDIA NVML | GPU temperature, utilization, clock, power, global VRAM, and reported fan RPM; availability depends on the installed driver |
+| Ryzen 9 9900X, family `1A`, model `44` | Signed AMDFamily17 module: Tctl/Tdie, maximum clock across queried cores, and package power from the energy counter |
+| X870 AORUS ELITE WIFI7 | Primary IT8696E and secondary IT87952E; CPU fan is primary channel 1, System Fan #4 is secondary channel 3 |
+| Validated NVIDIA Blackwell GPU | Memory temperature through NVML field 82 when supported, otherwise the signed Nvidia module; the fallback reports the maximum valid memory-channel temperature |
+| External AI usage | Claude `DW1` and Codex `DW3` in `HKCU\Software\FinalWire\AIDA64\ImportValues`, with associated status strings |
 
-Para compilar desde una copia nueva del repositorio, usar una Developer PowerShell con las herramientas C++ de Visual Studio y Windows SDK:
+The default GPU memory-temperature value is **not a hotspot reading**. Its label reflects the actual metric.
+
+AI widgets require a separate producer. The personal producer used during validation and its authentication are not distributed. The panel only reads reported Registry values and does not authenticate to AI services. A percentage alone does not establish that a provider query recently succeeded. Existing `AIDA64 AI Usage Monitor` tasks and scripts are left in place; AIDA64 itself is not required.
+
+Hardware access is limited to monitoring. Necessary register-index writes do not change fan curves, clocks, or voltages. Unsupported CPUs and boards are not probed using model-specific register sequences. Only official signed PawnIO modules are loaded, with the reference implementation's bus synchronization. Process separation protects the panel from collector failures; it cannot guarantee that a kernel driver will never fail.
+
+## Recovery and resource limits
+
+The local pipe uses a versioned, size-limited protocol and an ACL for the current user and SYSTEM. It accepts subscription state and shutdown requests, not arbitrary hardware commands. A ten-second query watchdog terminates only the collector. The panel can request up to three collector-task restarts per session, spaced one minute apart, while the display is active.
+
+Updates are manual. There are no background version checks or recurring update prompts. Logs and chart history are bounded. Normal sampling is once per second, fan readings every two seconds, and Registry input every five seconds.
+
+Measured results and limitations are documented in [VALIDATION.md](docs/VALIDATION.md). The initial two-process sample averaged **58.29 MiB private committed memory** and **0.0073% of machine CPU**. Including the existing external AI producer, a separate sample averaged **139.82 MiB**. Private committed memory and resident memory are different metrics. These measurements do not establish a Windows boot-time improvement or predict every workload.
+
+A reported loss of clicks while Fortnite was running remains unresolved. In a later occurrence it persisted with both CasePanel processes closed and recovered after Ctrl+Alt+Delete followed by Escape. Neither a permanent fix nor a responsible component has been established. See the validation report before treating this preview as fully validated for gaming sessions.
+
+## Build from source
+
+Requirements: **Rust 1.100.0**, `x86_64-pc-windows-msvc`, Visual Studio C++ build tools, and a Windows SDK. The CRT is linked statically. `Cargo.lock` fixes dependency versions.
 
 ```powershell
 git clone https://github.com/todociber/casepanel.git
 cd casepanel
 .\scripts\Prepare-Modules.ps1
-cargo build --release --locked
+.\scripts\dev.ps1 build --release --locked
 ```
 
-`Prepare-Modules.ps1` descarga la distribución oficial 0.2.11 de los módulos PawnIO, verifica su SHA-256 fijado y extrae los tres módulos utilizados. Se preparan al compilar y quedan fuera de Git. Para ejecutar el recolector también se necesita instalar PawnIO 2.2.0 mediante el instalador oficial; preparar los módulos no instala el controlador.
-
-Las barras de IA requieren un productor externo que publique los valores documentados del Registro. El script personal utilizado en la validación y sus credenciales permanecen fuera del repositorio; sin productor, esas barras muestran valores no disponibles.
-
-El paquete de ejecución se genera en `dist`; `.tools` contiene los compiladores utilizados durante el desarrollo. Los contratos y puntos de extensión están descritos en `docs\ARCHITECTURE.md`.
-Los resultados medidos y las pruebas pendientes constan en `docs\VALIDATION.md`. Las órdenes de compilación siguientes se ejecutan desde el proyecto; el paquete incluye su código en `source` y permite compilar con `cargo build --release` desde una Developer PowerShell.
+The development wrapper can use an installed Visual Studio toolchain or the private tools in the development workspace. It does not install tools on an end user's PC. `Prepare-Modules.ps1` downloads the official PawnIO module release, verifies its fixed SHA-256, and extracts the three required modules. It does not install the PawnIO driver. To collect low-level readings, install the official PawnIO 2.2.0 distribution or use the setup script in a release package.
 
 ```powershell
-.\scripts\dev.ps1 test --offline
-.\scripts\dev.ps1 -Strict clippy --offline --all-targets
-.\scripts\dev.ps1 build --release --offline
+.\scripts\dev.ps1 fmt --check
+.\scripts\dev.ps1 test --locked
+.\scripts\dev.ps1 -Strict clippy --locked --all-targets
 .\target\release\sensorpanel.exe --preview
 .\target\release\sensorpanel.exe --diagnose --samples 5 --out diagnostic.json
 ```
 
-El diagnóstico completo requiere elevación. `scripts\Test-Hardware.ps1` realiza una prueba corta con AIDA64 cerrado y lo restaura al terminar. Ejecútelo como administrador. No ejecute simultáneamente dos herramientas que accedan a los chips de placa durante una comparación.
+The full hardware diagnostic requires elevation. `scripts\Test-Hardware.ps1` temporarily stops installed collectors and AIDA64, then restores their prior running tasks. Avoid concurrent low-level monitoring tools when comparing readings. `Measure.ps1` measures selected processes; `Verify-Startup.ps1` records checks across distinct boots.
 
-`scripts\Measure.ps1` mide CPU normalizada, memoria residente y memoria privada de procesos específicos. Su propia carga pertenece a otro proceso. `scripts\Verify-Startup.ps1` registra las verificaciones de arranque y distingue reinicios reales de repetir la comprobación en la misma sesión.
+## Releases
 
-Los objetivos de rendimiento se evalúan con el editor cerrado y la plantilla predeterminada: CPU media inferior al 0,2 %, memoria privada combinada inferior a 60 MiB y primer dibujo en menos de un segundo. Son objetivos de prueba; no se promete una mejora en el arranque de Windows sin una comparación equivalente. El productor PowerShell de IA existente se mide por separado: el presupuesto de memoria se cumple en los procesos nativos, pero se supera al contar ese productor heredado. Su optimización corresponde a la etapa 1.1.
+`scripts\Package.ps1` builds the release assets in `dist`. It includes licenses, source, the verified official PawnIO installer, and the corresponding module source. The GitHub Actions workflow runs formatting, tests, Clippy, and packaging on Windows before publishing assets for a `v*` tag. Manual workflow runs build artifacts without publishing a release unless run against a version tag.
 
-La etapa 1.1 queda reservada para revisar las ventanas de consumo y optimizar el productor de IA. La autenticación permanecerá separada de la adquisición privilegiada de hardware.
+To publish a new version, update `Cargo.toml`, `app.manifest`, the release notes, and any version-specific documentation; commit, tag the matching version, and push the tag. Existing version tags should remain unchanged. Preview releases are marked as prereleases.
+
+## License and roadmap
+
+CasePanel is distributed under **MPL-2.0**. Third-party code and components retain their own terms; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Stage 1.1 will review usage-window accuracy and optimize or replace the external AI producer. Authentication remains outside the privileged collector. Additional hardware providers should preserve stable identities and keep device-specific access behind explicit compatibility checks.
