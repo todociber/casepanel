@@ -14,6 +14,10 @@ $installRoot=Join-Path $programFiles 'SensorPanel'
 $sourceExe=Join-Path $Source 'sensorpanel.exe'
 if (-not(Test-Path -LiteralPath $sourceExe)) {$sourceExe=Join-Path $Source 'target\release\sensorpanel.exe'}
 if (-not(Test-Path -LiteralPath $sourceExe)) {throw 'sensorpanel.exe was not found. Build the project or extract a release package.'}
+$presentMon=Join-Path $Source 'PresentMon.exe'
+if(-not(Test-Path -LiteralPath $presentMon)) {$presentMon=Join-Path $Source 'vendor\presentmon\PresentMon.exe'}
+if(-not(Test-Path -LiteralPath $presentMon)) {throw 'PresentMon is missing. Run scripts\Prepare-PresentMon.ps1.'}
+if((Get-FileHash -LiteralPath $presentMon -Algorithm SHA256).Hash -ne '364E5D98D4D134BD54DD25C22ED2CA2F4883F8BC3ED6502BEE0C151E3436D30C') {throw 'PresentMon checksum mismatch.'}
 $expectedRoot=[IO.Path]::GetFullPath((Join-Path $programFiles 'SensorPanel'))
 if ([IO.Path]::GetFullPath($installRoot) -ne $expectedRoot) {throw 'Unexpected installation directory.'}
 
@@ -62,6 +66,10 @@ try {
     throw
 }
 $sourceHash=(Get-FileHash -LiteralPath $sourceExe -Algorithm SHA256).Hash
+Copy-Item -LiteralPath $presentMon -Destination (Join-Path $installRoot 'PresentMon.exe') -Force
+$presentMonLicense=Join-Path $Source 'vendor\presentmon\LICENSE.txt'
+if(-not(Test-Path -LiteralPath $presentMonLicense)) {$presentMonLicense=Join-Path $Source 'licenses\PresentMon-MIT.txt'}
+if(Test-Path -LiteralPath $presentMonLicense) {Copy-Item -LiteralPath $presentMonLicense -Destination (Join-Path $installRoot 'PresentMon-LICENSE.txt') -Force}
 if ((Get-FileHash -LiteralPath (Join-Path $installRoot 'sensorpanel.exe')) -ne $null) {
     if ((Get-FileHash -LiteralPath (Join-Path $installRoot 'sensorpanel.exe') -Algorithm SHA256).Hash -ne $sourceHash) {throw 'Executable copy verification failed.'}
 }

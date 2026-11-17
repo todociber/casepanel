@@ -480,12 +480,214 @@ impl Renderer {
                     );
                 }
             }
+            if c.footer.enabled {
+                self.paint_footer(&t, &v, c, store)?;
+            }
             if let Err(e) = t.EndDraw(None, None) {
                 self.reset();
                 return Err(e.to_string());
             }
             Ok(())
         }
+    }
+    unsafe fn footer_text(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        widget: Widget,
+    ) -> Result<(), String> {
+        let p = viewport.point(widget.x, widget.y);
+        let rect = D2D_RECT_F {
+            left: p.X,
+            top: p.Y,
+            right: p.X + widget.width * viewport.scale,
+            bottom: p.Y + widget.height * viewport.scale,
+        };
+        let format = self.format(&widget, viewport.scale)?;
+        let brush = self.brush(target, &widget.color, false)?;
+        target.DrawText(
+            &widget.text.encode_utf16().collect::<Vec<_>>(),
+            &format,
+            &rect,
+            &brush,
+            D2D1_DRAW_TEXT_OPTIONS_CLIP,
+            DWRITE_MEASURING_MODE_NATURAL,
+        );
+        Ok(())
+    }
+    unsafe fn paint_footer(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        config: &Config,
+        store: &Store,
+    ) -> Result<(), String> {
+        let top = config.footer_top();
+        let center = config.canvas_width / 2.;
+        let point = |x, y| viewport.point(x, y);
+        let rect = |x, y, w, h| {
+            let p = point(x, y);
+            D2D_RECT_F {
+                left: p.X,
+                top: p.Y,
+                right: p.X + w * viewport.scale,
+                bottom: p.Y + h * viewport.scale,
+            }
+        };
+        let black = self.brush(target, "#000000", false)?;
+        target.FillRectangle(&rect(0., top, config.canvas_width, 150.), &black);
+        for (i, button) in super::footer::buttons(config).iter().enumerate() {
+            let fill = self.brush(target, if i == 0 { "#171717" } else { "#0D0D0D" }, false)?;
+            let foreground = if button.enabled { "#BBBBBB" } else { "#656565" };
+            let brush = self.brush(target, foreground, false)?;
+            target.FillRoundedRectangle(
+                &D2D1_ROUNDED_RECT {
+                    rect: rect(button.x, button.y, button.width, button.height),
+                    radiusX: 8. * viewport.scale,
+                    radiusY: 8. * viewport.scale,
+                },
+                &fill,
+            );
+            if i == 0 {
+                let accent = self.brush(target, "#80C5FF", false)?;
+                target.FillRectangle(
+                    &rect(
+                        button.x + 16.,
+                        button.y + button.height - 3.,
+                        button.width - 32.,
+                        3.,
+                    ),
+                    &accent,
+                );
+            }
+            let cx = button.x + button.width / 2.;
+            let cy = button.y + 29.;
+            let line = |x1, y1, x2, y2| {
+                target.DrawLine(
+                    point(x1, y1),
+                    point(x2, y2),
+                    &brush,
+                    2. * viewport.scale,
+                    None,
+                )
+            };
+            match i {
+                0 => {
+                    for dx in [-14., 3.] {
+                        for dy in [-14., 3.] {
+                            target.DrawRectangle(
+                                &rect(cx + dx, cy + dy, 11., 11.),
+                                &brush,
+                                2. * viewport.scale,
+                                None,
+                            );
+                        }
+                    }
+                }
+                1 => {
+                    line(cx - 16., cy + 13., cx - 16., cy - 14.);
+                    line(cx - 16., cy + 13., cx + 17., cy + 13.);
+                    line(cx - 11., cy + 5., cx - 3., cy - 5.);
+                    line(cx - 3., cy - 5., cx + 5., cy + 1.);
+                    line(cx + 5., cy + 1., cx + 15., cy - 13.);
+                }
+                2 => {
+                    for ((x1, y1), (x2, y2)) in [
+                        ((4., -17.), (-10., 2.)),
+                        ((-10., 2.), (0., 2.)),
+                        ((0., 2.), (-4., 17.)),
+                        ((-4., 17.), (11., -3.)),
+                        ((11., -3.), (1., -3.)),
+                        ((1., -3.), (4., -17.)),
+                    ] {
+                        line(cx + x1, cy + y1, cx + x2, cy + y2);
+                    }
+                }
+                _ => {
+                    for radius in [5., 11.] {
+                        target.DrawEllipse(
+                            &D2D1_ELLIPSE {
+                                point: point(cx, cy),
+                                radiusX: radius * viewport.scale,
+                                radiusY: radius * viewport.scale,
+                            },
+                            &brush,
+                            2. * viewport.scale,
+                            None,
+                        );
+                    }
+                    for n in 0..8 {
+                        let a = n as f32 * std::f32::consts::FRAC_PI_4;
+                        line(
+                            cx + a.cos() * 11.,
+                            cy + a.sin() * 11.,
+                            cx + a.cos() * 17.,
+                            cy + a.sin() * 17.,
+                        );
+                    }
+                }
+            }
+            self.footer_text(
+                target,
+                viewport,
+                Widget {
+                    x: button.x,
+                    y: button.y + 57.,
+                    width: button.width,
+                    height: 38.,
+                    text: button.label.into(),
+                    font_size: 29.,
+                    color: foreground.into(),
+                    align: "center".into(),
+                    ..Widget::default()
+                },
+            )?;
+        }
+        let reading = super::footer::readout(store);
+        let width = config.canvas_width * 0.30;
+        let text = |value: String, y, h, font_size, color: &str| Widget {
+            x: center - width / 2.,
+            y,
+            width,
+            height: h,
+            text: value,
+            font_size,
+            color: color.into(),
+            align: "center".into(),
+            ..Widget::default()
+        };
+        if let Some(fps) = reading.fps {
+            self.footer_text(
+                target,
+                viewport,
+                text(reading.application, top + 7., 29., 23., "#999999"),
+            )?;
+            self.footer_text(
+                target,
+                viewport,
+                text(format!("{fps:.0} FPS"), top + 34., 85., 70., "#FFFFFF"),
+            )?;
+            if let Some(ms) = reading.frame_ms {
+                self.footer_text(
+                    target,
+                    viewport,
+                    text(
+                        format!("{ms:.1} ms por fotograma"),
+                        top + 119.,
+                        28.,
+                        23.,
+                        "#999999",
+                    ),
+                )?;
+            }
+        } else {
+            self.footer_text(
+                target,
+                viewport,
+                text(reading.status.into(), top + 48., 50., 34., "#888888"),
+            )?;
+        }
+        Ok(())
     }
 }
 #[cfg(test)]

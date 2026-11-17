@@ -9,6 +9,7 @@
 /vendor/pawnio/release_*.zip
 /vendor/reference/nvml.h
 /PawnIO_setup.exe
+/vendor/presentmon/*.exe
 
 # Local credentials and signing material.
 .env

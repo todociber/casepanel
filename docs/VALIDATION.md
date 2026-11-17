@@ -13,6 +13,14 @@ Test PC: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7, and a 
 
 Local evidence lives in `artifacts`, including hardware diagnostics, recovery tests, and performance reports. It is excluded from public distributions because it contains machine identities.
 
+## Footer and FPS update — November 15, 2026
+
+- 24 tests passed and Clippy passed with warnings denied. New coverage checks real PresentMon CSV column casing and quoted names, invalid timings, foreground selection, dominant swap chains, expiry, bounded frame history, footer hit testing, stale FPS removal, and migration without changing widgets.
+- Live PresentMon 2.3.1 capture returned valid rendered-frame readings for the already-running Triforce application, approximately 224–272 FPS in the 12-sample diagnostic (`artifacts/fps-diagnostic-live.json`). This is a functional capture, not a reproducible gaming benchmark.
+- Native visual inspection showed the footer together with live CPU/GPU temperature, clock, power, fan and VRAM readings; the footer showed 261 FPS and 3.8 ms at one point. The Settings button opened the existing editor. Graphs and Shortcuts remain disabled, reserved slots.
+- The installed executable hash matched the built executable. The profile migration preserved all existing widgets and bindings and enabled the previously unused bottom strip. The prior executable and profile were backed up under the installed `backups` directory; `artifacts/footer-installation.json` records the update.
+- Both scheduled tasks and the PresentMon child were running after validation. One instantaneous private-memory sample was 29.86 MiB for the panel, 27.72 MiB for the collector, and 5.14 MiB for PresentMon (62.72 MiB combined). This is not an average or a repeat of the original resource benchmark; the earlier 60 MiB result does not cover the new helper.
+
 ## Performance
 
 The first measurement used 600 samples over 615.1 seconds, with the editor closed, the default layout, and both installed processes. CPU is normalized across 24 logical processors.

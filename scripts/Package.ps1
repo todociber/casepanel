@@ -13,6 +13,7 @@ if($ExpectedVersion){
     if($initialChanges.Count){throw ('Release worktree must be clean: '+($initialChanges -join '; '))}
 }
 & (Join-Path $PSScriptRoot 'Prepare-Modules.ps1') -IncludeSource
+& (Join-Path $PSScriptRoot 'Prepare-PresentMon.ps1')
 $cache=Join-Path $root '.tools\downloads'
 $installer=Join-Path $cache 'PawnIO_setup.exe'
 & (Join-Path $PSScriptRoot 'Prepare-PawnIO.ps1') -OutFile $installer
@@ -41,10 +42,12 @@ New-Item -ItemType Directory -Path $package,$sourceRoot,$licenses,(Join-Path $pa
 $exe=Join-Path $root 'target\release\sensorpanel.exe'
 if(-not(Test-Path -LiteralPath $exe)){throw 'The release executable is missing.'}
 Copy-Item -LiteralPath $exe -Destination $package -Force
+Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\PresentMon.exe') -Destination $package -Force
+Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\LICENSE.txt') -Destination (Join-Path $licenses 'PresentMon-MIT.txt') -Force
 Copy-Item -LiteralPath $installer -Destination (Join-Path $package 'PawnIO_setup.exe') -Force
 foreach($file in 'README.md','THIRD-PARTY-NOTICES.md','LICENSE'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $package -Force}
 Copy-Item -LiteralPath (Join-Path $root 'docs') -Destination $package -Recurse -Force
-foreach($file in 'Install.ps1','Uninstall.ps1','Prepare-PawnIO.ps1','Prepare-Modules.ps1','Measure.ps1','Verify-Startup.ps1','Test-Hardware.ps1'){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $package 'scripts') -Force}
+foreach($file in 'Install.ps1','Update-Installed.ps1','Uninstall.ps1','Prepare-PawnIO.ps1','Prepare-Modules.ps1','Prepare-PresentMon.ps1','Measure.ps1','Verify-Startup.ps1','Test-Hardware.ps1'){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $package 'scripts') -Force}
 Copy-Item -LiteralPath (Join-Path $root 'vendor\pawnio\modules\COPYING') -Destination (Join-Path $licenses 'PawnIO-Modules-LGPL-2.1.txt') -Force
 $moduleSource=Join-Path $cache 'PawnIO.Modules-source-0.2.11.zip'
 Copy-Item -LiteralPath $moduleSource -Destination $licenses -Force
@@ -63,6 +66,8 @@ foreach($directory in 'src','.cargo','docs','scripts','.github'){
 }
 foreach($file in 'Cargo.toml','Cargo.lock','rust-toolchain.toml','build.rs','app.manifest','README.md','LICENSE','THIRD-PARTY-NOTICES.md','.gitignore','.gitattributes'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $sourceRoot -Force}
 $referenceTarget=Join-Path $sourceRoot 'vendor\reference'
+New-Item -ItemType Directory -Path (Join-Path $sourceRoot 'vendor\presentmon') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\LICENSE.txt') -Destination (Join-Path $sourceRoot 'vendor\presentmon\LICENSE.txt') -Force
 New-Item -ItemType Directory -Path $referenceTarget -Force|Out-Null
 Get-ChildItem -LiteralPath (Join-Path $root 'vendor\reference') -File|Where-Object {$_.Name -ne 'nvml.h'}|ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $referenceTarget -Force}
 foreach($file in 'AMDFamily17.bin','LpcIO.bin','Nvidia.bin','COPYING'){Copy-Item -LiteralPath (Join-Path $root "vendor\pawnio\modules\$file") -Destination (Join-Path $sourceRoot 'vendor\pawnio\modules') -Force}

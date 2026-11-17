@@ -54,6 +54,10 @@ Profiles live at `%LOCALAPPDATA%\SensorPanel\profile.json`. The previous valid f
 
 Missing readings display `—`. Stale readings retain their last value, appear dimmed, and carry `*`. Zero RPM is valid. Bindings include device identity: replacing hardware preserves the layout and requires reassignment of the affected sensors.
 
+The bottom 150 pixels contain a persistent navigation strip and game FPS. **Resumen** marks the current view; **Gráficas** and **Accesos** reserve positions for future views and remain disabled. **Ajustes** opens the existing editor. Footer labels are Spanish. Existing profiles gain this strip only when the entire bottom area is unused; the widgets and bindings are preserved. Set `footer.enabled` to `false` in an exported JSON profile to hide it.
+
+FPS and mean frame time come from the pinned PresentMon 2.3.1 console application, installed beside CasePanel. These are **rendered/presented frames**, not display refresh rate or a guarantee of counting generated frames. Capture follows a foreground graphics application, excludes common browsers, launchers and desktop processes, and retains the last selected application while it continues presenting. With multiple swap chains, it uses the busiest one instead of adding their rates. It displays a one-second rolling mean, updated once per second; no game shows **Sin juego**, and a capture error shows **FPS no disponibles**. The helper uses ETW without an overlay or input tracking, runs with the elevated collector, and stops when the panel's display is inactive. History and restart attempts are bounded.
+
 ## Initial hardware support
 
 | Provider | Readings and limits |
@@ -89,6 +93,7 @@ Requirements: **Rust 1.100.0**, `x86_64-pc-windows-msvc`, Visual Studio C++ buil
 git clone https://github.com/todociber/casepanel.git
 cd casepanel
 .\scripts\Prepare-Modules.ps1
+.\scripts\Prepare-PresentMon.ps1
 .\scripts\dev.ps1 build --release --locked
 ```
 
@@ -100,6 +105,7 @@ The development wrapper can use an installed Visual Studio toolchain or the priv
 .\scripts\dev.ps1 -Strict clippy --locked --all-targets
 .\target\release\sensorpanel.exe --preview
 .\target\release\sensorpanel.exe --diagnose --samples 5 --out diagnostic.json
+.\target\release\sensorpanel.exe --diagnose-fps --samples 15 --out fps.json
 ```
 
 The full hardware diagnostic requires elevation. `scripts\Test-Hardware.ps1` temporarily stops installed collectors and AIDA64, then restores their prior running tasks. Avoid concurrent low-level monitoring tools when comparing readings. `Measure.ps1` measures selected processes; `Verify-Startup.ps1` records checks across distinct boots.

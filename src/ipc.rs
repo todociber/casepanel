@@ -373,7 +373,7 @@ pub fn serve() -> Result<(), String> {
                 }
             }
         });
-        let mut collector = None;
+        let mut collector: Option<crate::sensors::Collector> = None;
         loop {
             let _ = ConnectNamedPipe(pipe.0, std::ptr::null_mut());
             let mut available = 0;
@@ -401,7 +401,10 @@ pub fn serve() -> Result<(), String> {
                         Ok(ClientCommand::Subscribe { version, active: a })
                             if version == PROTOCOL_VERSION =>
                         {
-                            active = a
+                            active = a;
+                            if !active && let Some(c) = collector.as_mut() {
+                                c.pause();
+                            }
                         }
                         Ok(ClientCommand::Shutdown { version }) if version == PROTOCOL_VERSION => {
                             return Ok(());
@@ -426,6 +429,9 @@ pub fn serve() -> Result<(), String> {
                 std::thread::sleep(Duration::from_millis(100));
             }
             armed.store(false, Ordering::Relaxed);
+            if let Some(c) = collector.as_mut() {
+                c.pause();
+            }
             DisconnectNamedPipe(pipe.0);
         }
     }

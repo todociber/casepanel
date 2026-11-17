@@ -1,8 +1,10 @@
 mod basic;
+mod fps;
 mod nvml;
 mod pawnio;
 use crate::{model::Snapshot, platform};
 pub use basic::Basic;
+pub use fps::Fps;
 pub struct Collector {
     basic: Basic,
     gpu: Option<nvml::Nvml>,
@@ -10,6 +12,7 @@ pub struct Collector {
     memory: Option<pawnio::NvidiaMemory>,
     diagnostics: Vec<String>,
     tick: u64,
+    fps: fps::Fps,
 }
 impl Collector {
     pub fn new() -> Self {
@@ -53,10 +56,12 @@ impl Collector {
             memory,
             diagnostics,
             tick: 0,
+            fps: fps::Fps::new(),
         }
     }
     pub fn poll(&mut self) -> Snapshot {
         let mut sensors = self.basic.poll();
+        sensors.extend(self.fps.poll());
         if let Some(g) = &mut self.gpu {
             sensors.extend(g.poll(self.tick));
         }
@@ -75,5 +80,8 @@ impl Collector {
         }
         self.tick += 1;
         Snapshot::new(sensors, self.diagnostics.clone())
+    }
+    pub fn pause(&mut self) {
+        self.fps.pause();
     }
 }

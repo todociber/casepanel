@@ -75,6 +75,14 @@ pub struct Config {
     pub startup_delay_seconds: u32,
     pub bindings: BTreeMap<String, String>,
     pub widgets: Vec<Widget>,
+    #[serde(default)]
+    pub footer: FooterConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FooterConfig {
+    pub enabled: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -87,6 +95,7 @@ impl Default for Config {
             startup_delay_seconds: 5,
             bindings: BTreeMap::new(),
             widgets: vec![],
+            footer: FooterConfig { enabled: true },
         };
         let mut add = |id: &str,
                        kind: WidgetKind,
@@ -472,6 +481,17 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn footer_top(&self) -> f32 {
+        self.canvas_height - 150.
+    }
+    fn has_footer_space(&self) -> bool {
+        self.canvas_width >= 1200.
+            && self.canvas_height >= 600.
+            && self
+                .widgets
+                .iter()
+                .all(|w| w.y + w.height <= self.footer_top())
+    }
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != 1 {
             return Err("Unsupported profile version".into());
@@ -482,6 +502,9 @@ impl Config {
             || self.startup_delay_seconds > 60
         {
             return Err("Invalid canvas size, widget count, or startup delay".into());
+        }
+        if self.footer.enabled && (self.canvas_width < 1200. || self.canvas_height < 600.) {
+            return Err("The footer requires a canvas of at least 1200 × 600".into());
         }
         let mut ids = BTreeSet::new();
         for w in &self.widgets {
@@ -515,8 +538,15 @@ impl Config {
         if metadata.len() > 2 * 1024 * 1024 {
             return Err("Profile is too large".into());
         }
-        let c: Self = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        let legacy = json.get("footer").is_none();
+        let mut c: Self = serde_json::from_value(json).map_err(|e| e.to_string())?;
+        // Older profiles gain the footer only when its entire area is unused.
+        if legacy {
+            c.footer.enabled = c.has_footer_space();
+        }
         c.validate()?;
         Ok(c)
     }
@@ -633,6 +663,35 @@ mod tests {
         assert_eq!(recovered.monitor_name, first.monitor_name);
         std::fs::remove_file(&path).unwrap();
         std::fs::remove_file(backup_path(&path)).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn legacy_footer_migration_preserves_widgets_and_respects_occupied_space() {
+        let root = std::env::temp_dir().join(format!(
+            "sensorpanel-footer-test-{}-{}",
+            std::process::id(),
+            crate::model::now_ms()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("profile.json");
+        let mut legacy = serde_json::to_value(Config::default()).unwrap();
+        legacy.as_object_mut().unwrap().remove("footer");
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let migrated = Config::load(&path).unwrap();
+        assert!(migrated.footer.enabled);
+        assert_eq!(
+            serde_json::to_value(&migrated.widgets).unwrap(),
+            legacy["widgets"]
+        );
+        legacy["widgets"][0]["y"] = serde_json::json!(1000.);
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert!(!Config::load(&path).unwrap().footer.enabled);
+        let mut explicit = Config::default();
+        explicit.footer.enabled = false;
+        explicit.save(&path).unwrap();
+        assert!(!Config::load(&path).unwrap().footer.enabled);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(root.join("profile.json.bak")).unwrap();
         std::fs::remove_dir(root).unwrap();
     }
 }

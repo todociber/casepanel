@@ -1,3 +1,4 @@
+mod footer;
 mod monitors;
 mod render;
 use crate::{
@@ -293,6 +294,19 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
                 return LRESULT(0);
             }
             WM_ERASEBKGND => return LRESULT(1),
+            WM_MOUSEACTIVATE if !a.preview => return LRESULT(MA_NOACTIVATE as isize),
+            WM_LBUTTONUP => {
+                let mut rect = RECT::default();
+                let _ = GetClientRect(hwnd, &mut rect);
+                let viewport =
+                    render::Viewport::new(rect.right as f32, rect.bottom as f32, &a.config);
+                let x = (lp.0 as u16 as i16 as f32 - viewport.x) / viewport.scale;
+                let y = ((lp.0 >> 16) as u16 as i16 as f32 - viewport.y) / viewport.scale;
+                if footer::settings_hit(&a.config, x, y) {
+                    a.open_editor();
+                }
+                return LRESULT(0);
+            }
             WM_SIZE | WM_DPICHANGED => {
                 a.renderer.reset();
                 let _ = InvalidateRect(Some(hwnd), None, false);

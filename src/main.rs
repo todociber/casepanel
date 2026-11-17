@@ -32,6 +32,35 @@ fn run() -> Result<(), String> {
         config::Config::default().save(&path)?;
         return Ok(());
     }
+    if args.iter().any(|a| a == "--upgrade-profile") {
+        let path = option("--profile")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(config::default_path);
+        let config = config::Config::load(&path)?;
+        config.save(&path)?;
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--diagnose-fps") {
+        let mut fps = sensors::Fps::new();
+        let count = option("--samples")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(5)
+            .clamp(1, 120);
+        let mut samples = Vec::new();
+        for i in 0..count {
+            samples.push(fps.poll());
+            if i + 1 < count {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        }
+        let bytes = serde_json::to_vec_pretty(&samples).map_err(|e| e.to_string())?;
+        if let Some(path) = option("--out") {
+            std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+        } else {
+            println!("{}", String::from_utf8_lossy(&bytes));
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--diagnose") {
         let mut collector = sensors::Collector::new();
         let count = option("--samples")

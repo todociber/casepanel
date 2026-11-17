@@ -31,6 +31,15 @@ The repository's preparation script retrieves the pinned official distribution a
 
 NVML loads from the installed NVIDIA display driver. NVIDIA DLLs are not redistributed. Interface reference: https://docs.nvidia.com/deploy/nvml-api/ . A locally downloaded NVIDIA/go-nvml reference header retains its original notices, stays outside Git, and is not compiled into the application.
 
+## PresentMon
+
+PresentMon 2.3.1 console application, Copyright (C) 2017-2024 Intel Corporation, MIT license.
+The unmodified official x64 executable is distributed beside CasePanel and its license is
+included as `PresentMon-LICENSE.txt` on installation and `licenses/PresentMon-MIT.txt` in packages.
+The source repository is https://github.com/GameTechDev/PresentMon/tree/v2.3.1 .
+Pinned SHA-256: `364e5d98d4d134bd54dd25c22ed2ca2f4883f8bc3ed6502bee0c151e3436d30c`.
+`scripts/Prepare-PresentMon.ps1` and the runtime verify this digest before use.
+
 ## Rust crates
 
 `windows` and `windows-numerics`: Microsoft, MIT/Apache-2.0. `serde`, `serde_json`, and `sha2`: MIT/Apache-2.0. Exact versions and transitive dependencies are fixed in Cargo.lock. Release packages include available license/notice files from the resolved crates. Their source and manifests are available from crates.io and the upstream repositories identified in those manifests.
