@@ -3,6 +3,19 @@ use crate::config::{BottomBarMode, DashboardConfig};
 
 const PAGE_WIDGETS: usize = 600;
 const PAGE_DASHBOARD: usize = 601;
+const PAGE_WORKDAY: usize = 602;
+const WORK_TITLE: usize = 701;
+const WORK_DAYS: usize = 710;
+const WORK_TIMES: usize = 720;
+const WORK_APPLY: usize = 740;
+const WORK_DEFAULTS: usize = 741;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Page {
+    Design,
+    Dashboard,
+    Workday,
+}
 const TOGGLES: usize = 610;
 const FOOTER: usize = 615;
 const MODE: usize = 621;
@@ -12,22 +25,28 @@ const MINIMAL: usize = 671;
 const DEFAULTS: usize = 672;
 
 pub struct Controls {
-    pub dashboard_page: bool,
+    pub page: Page,
     all: Vec<(usize, HWND)>,
     toggles: [HWND; 5],
     footer: HWND,
     mode: HWND,
     thresholds: [HWND; 8],
+    work_title: HWND,
+    work_days: [HWND; 7],
+    work_times: [HWND; 14],
 }
 impl Default for Controls {
     fn default() -> Self {
         Self {
-            dashboard_page: true,
+            page: Page::Dashboard,
             all: Vec::new(),
             toggles: [HWND::default(); 5],
             footer: HWND::default(),
             mode: HWND::default(),
             thresholds: [HWND::default(); 8],
+            work_title: HWND::default(),
+            work_days: [HWND::default(); 7],
+            work_times: [HWND::default(); 14],
         }
     }
 }
@@ -46,7 +65,11 @@ impl App {
     }
     pub(super) unsafe fn create_dashboard_controls(&mut self) {
         self.dashboard_controls.all.clear();
-        for (id, label) in [(PAGE_WIDGETS, "Diseño"), (PAGE_DASHBOARD, "Resumen")] {
+        for (id, label) in [
+            (PAGE_WIDGETS, "Diseño"),
+            (PAGE_DASHBOARD, "Resumen"),
+            (PAGE_WORKDAY, "Jornada"),
+        ] {
             self.dashboard_control(w!("BUTTON"), label, id, WS_TABSTOP);
         }
         for (i, label) in [
@@ -121,9 +144,63 @@ impl App {
             self.dashboard_control(w!("BUTTON"), label, id, WS_TABSTOP);
         }
         self.dashboard_control(w!("STATIC"), "Vista previa en vivo · Guardar conserva los cambios.\r\nLos vatios representan CPU + GPU, no todo el equipo.", 673, WINDOW_STYLE(0));
+        self.dashboard_control(
+            w!("STATIC"),
+            "Título del medidor (máximo 40 caracteres)",
+            700,
+            WINDOW_STYLE(0),
+        );
+        self.dashboard_controls.work_title = self.dashboard_control(
+            w!("EDIT"),
+            "",
+            WORK_TITLE,
+            WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
+        );
+        self.dashboard_control(w!("STATIC"), "Día laborable", 702, WINDOW_STYLE(0));
+        self.dashboard_control(w!("STATIC"), "Entrada", 703, WINDOW_STYLE(0));
+        self.dashboard_control(w!("STATIC"), "Salida", 704, WINDOW_STYLE(0));
+        for day in 0..7 {
+            self.dashboard_controls.work_days[day] = self.dashboard_control(
+                w!("BUTTON"),
+                crate::work_schedule::DAYS[day],
+                WORK_DAYS + day,
+                WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
+            );
+            for col in 0..2 {
+                self.dashboard_controls.work_times[day * 2 + col] = self.dashboard_control(
+                    w!("EDIT"),
+                    "",
+                    WORK_TIMES + day * 2 + col,
+                    WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
+                );
+            }
+        }
+        self.dashboard_control(w!("BUTTON"), "Aplicar jornada", WORK_APPLY, WS_TABSTOP);
+        self.dashboard_control(
+            w!("BUTTON"),
+            "Restaurar horario original",
+            WORK_DEFAULTS,
+            WS_TABSTOP,
+        );
+        self.dashboard_control(w!("STATIC"), "Horas HH:MM, en el mismo día; usa la hora local.\r\nDesmarca los días libres. No se descuentan pausas.\r\nGuardar conserva los cambios; cerrar permite descartarlos.", 742, WINDOW_STYLE(0));
         self.load_dashboard_controls();
     }
     pub(super) unsafe fn load_dashboard_controls(&self) {
+        set_text(
+            self.dashboard_controls.work_title,
+            &self.config.workday.title,
+        );
+        for day in 0..7 {
+            let hours = &self.config.workday.days[day];
+            let _ = SendMessageW(
+                self.dashboard_controls.work_days[day],
+                BM_SETCHECK,
+                Some(WPARAM(usize::from(hours.enabled))),
+                None,
+            );
+            set_text(self.dashboard_controls.work_times[day * 2], &hours.start);
+            set_text(self.dashboard_controls.work_times[day * 2 + 1], &hours.end);
+        }
         let d = &self.config.dashboard;
         for (handle, checked) in self.dashboard_controls.toggles.iter().zip([
             d.enable_semantic_colors,
@@ -171,7 +248,7 @@ impl App {
         }
     }
     pub(super) unsafe fn layout_dashboard_controls(&self, rect: &RECT, left: i32) {
-        let active = self.dashboard_controls.dashboard_page;
+        let active = self.dashboard_controls.page != Page::Design;
         for id in (ID_WIDGET..=ID_STATUS)
             .chain(300..315)
             .chain(400..415)
@@ -198,13 +275,28 @@ impl App {
             }
         };
         for (id, handle) in &self.dashboard_controls.all {
-            let nav = *id == PAGE_WIDGETS || *id == PAGE_DASHBOARD;
-            let _ = ShowWindow(*handle, if nav || active { SW_SHOW } else { SW_HIDE });
+            let nav = (PAGE_WIDGETS..=PAGE_WORKDAY).contains(id);
+            let visible = nav
+                || if *id >= 700 {
+                    self.dashboard_controls.page == Page::Workday
+                } else {
+                    self.dashboard_controls.page == Page::Dashboard
+                };
+            let _ = ShowWindow(*handle, if visible { SW_SHOW } else { SW_HIDE });
         }
-        for (id, x) in [(PAGE_WIDGETS, 0), (PAGE_DASHBOARD, 225)] {
+        for (id, x) in [
+            (PAGE_WIDGETS, 0),
+            (PAGE_DASHBOARD, 150),
+            (PAGE_WORKDAY, 300),
+        ] {
             if let Ok(handle) = GetDlgItem(Some(self.editor), id as i32) {
-                let _ = MoveWindow(handle, left + x, 5, 220, 28, true);
-                let _ = EnableWindow(handle, (id == PAGE_WIDGETS) == active);
+                let _ = MoveWindow(handle, left + x, 5, 145, 28, true);
+                let current = match self.dashboard_controls.page {
+                    Page::Design => PAGE_WIDGETS,
+                    Page::Dashboard => PAGE_DASHBOARD,
+                    Page::Workday => PAGE_WORKDAY,
+                };
+                let _ = EnableWindow(handle, id != current);
             }
         }
         if !active {
@@ -236,6 +328,27 @@ impl App {
         place(MINIMAL as i32, 0, 610, 200, 28);
         place(DEFAULTS as i32, 210, 610, 240, 28);
         place(673, 0, 650, 450, 42);
+        place(700, 0, 62, 450, 24);
+        place(WORK_TITLE as i32, 0, 92, 450, 30);
+        place(702, 0, 150, 200, 24);
+        place(703, 230, 150, 95, 24);
+        place(704, 345, 150, 95, 24);
+        for (row, day) in [1, 2, 3, 4, 5, 6, 0].into_iter().enumerate() {
+            let y = 190 + row as i32 * 46;
+            place((WORK_DAYS + day) as i32, 0, y, 220, 30);
+            for col in 0..2 {
+                place(
+                    (WORK_TIMES + day * 2 + col) as i32,
+                    230 + col as i32 * 115,
+                    y,
+                    95,
+                    30,
+                );
+            }
+        }
+        place(WORK_APPLY as i32, 0, 530, 450, 30);
+        place(WORK_DEFAULTS as i32, 0, 575, 450, 30);
+        place(742, 0, 630, 450, 65);
         for (id, x) in [(ID_SAVE, 0), (ID_IMPORT, 150), (ID_EXPORT, 300)] {
             if let Ok(handle) = GetDlgItem(Some(self.editor), id as i32) {
                 let _ = MoveWindow(handle, left + x, rect.bottom - 126, 140, 28, true);
@@ -244,6 +357,40 @@ impl App {
         if let Ok(handle) = GetDlgItem(Some(self.editor), ID_STATUS as i32) {
             let _ = MoveWindow(handle, left, rect.bottom - 88, 450, 78, true);
         }
+    }
+    pub(super) unsafe fn apply_settings_page(&mut self) -> Result<(), String> {
+        match self.dashboard_controls.page {
+            Page::Design => self.apply_fields(),
+            Page::Dashboard => self.apply_dashboard_thresholds(),
+            Page::Workday => self.apply_workday(),
+        }
+    }
+    unsafe fn apply_workday(&mut self) -> Result<(), String> {
+        let mut schedule = self.config.workday.clone();
+        schedule.title = text(self.dashboard_controls.work_title).trim().into();
+        for day in 0..7 {
+            schedule.days[day].enabled = SendMessageW(
+                self.dashboard_controls.work_days[day],
+                BM_GETCHECK,
+                None,
+                None,
+            )
+            .0 == 1;
+            schedule.days[day].start = text(self.dashboard_controls.work_times[day * 2])
+                .trim()
+                .into();
+            schedule.days[day].end = text(self.dashboard_controls.work_times[day * 2 + 1])
+                .trim()
+                .into();
+        }
+        schedule.validate()?;
+        if schedule != self.config.workday {
+            self.config.workday = schedule;
+            self.dirty = true;
+        }
+        self.workday = workday::Presentation::now(&self.config);
+        self.invalidate();
+        Ok(())
     }
     pub(super) unsafe fn apply_dashboard_thresholds(&mut self) -> Result<(), String> {
         let mut values = [0f32; 8];
@@ -278,10 +425,44 @@ impl App {
         id: usize,
         notification: usize,
     ) -> Result<bool, String> {
-        if id == PAGE_WIDGETS || id == PAGE_DASHBOARD {
-            self.dashboard_controls.dashboard_page = id == PAGE_DASHBOARD;
+        if (PAGE_WIDGETS..=PAGE_WORKDAY).contains(&id) {
+            if self.dashboard_controls.page == Page::Workday {
+                self.apply_workday()?;
+            }
+            self.dashboard_controls.page = match id {
+                PAGE_WIDGETS => Page::Design,
+                PAGE_WORKDAY => Page::Workday,
+                _ => Page::Dashboard,
+            };
+            if id == PAGE_WORKDAY {
+                self.select_view(PanelView::Graphs);
+            }
             self.layout_controls();
             self.invalidate();
+            return Ok(true);
+        }
+        if id == WORK_APPLY {
+            self.apply_workday()?;
+            self.message.clear();
+            return Ok(true);
+        }
+        if id == WORK_DEFAULTS {
+            self.config.workday = crate::work_schedule::WorkdayConfig::default();
+            self.dirty = true;
+            self.load_dashboard_controls();
+            self.workday = workday::Presentation::now(&self.config);
+            self.invalidate();
+            return Ok(true);
+        }
+        if (id == WORK_TITLE || (WORK_TIMES..WORK_TIMES + 14).contains(&id))
+            && notification == EN_CHANGE as usize
+            || (WORK_DAYS..WORK_DAYS + 7).contains(&id) && notification == BN_CLICKED as usize
+        {
+            self.dirty = true;
+            self.message = match self.apply_workday() {
+                Ok(()) => String::new(),
+                Err(e) => format!("Jornada sin aplicar: {e}"),
+            };
             return Ok(true);
         }
         if (TOGGLES..=FOOTER).contains(&id) && notification == BN_CLICKED as usize

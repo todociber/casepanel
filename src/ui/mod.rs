@@ -4,6 +4,7 @@ mod footer;
 mod monitors;
 mod render;
 mod settings;
+mod workday;
 use crate::{
     config::{Config, Widget, WidgetKind},
     ipc,
@@ -83,6 +84,12 @@ struct Drag {
     original: Widget,
     resize: bool,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PanelView {
+    Summary,
+    Graphs,
+    Access,
+}
 struct App {
     owner: *const RefCell<App>,
     config: Config,
@@ -95,7 +102,8 @@ struct App {
     ha_file: crate::ha_config::ConfigFile,
     ha: access::State,
     ha_client: Option<crate::ha_client::Client>,
-    access_active: bool,
+    view: PanelView,
+    workday: workday::Presentation,
     client: ipc::Client,
     panel: HWND,
     editor: HWND,
@@ -176,7 +184,8 @@ pub fn run(
             ha_file,
             ha: access::State::default(),
             ha_client: None,
-            access_active: false,
+            view: PanelView::Summary,
+            workday: workday::Presentation::default(),
             client: ipc::Client::start(),
             panel: HWND::default(),
             editor: HWND::default(),
@@ -336,9 +345,10 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
                 let y = ((lp.0 >> 16) as u16 as i16 as f32 - viewport.y) / viewport.scale;
                 match footer::navigation_hit(&a.config, x, y) {
                     Some(footer::Destination::Settings) => a.open_editor(),
-                    Some(footer::Destination::Summary) => a.select_access(false),
-                    Some(footer::Destination::Access) => a.select_access(true),
-                    None if a.access_active => a.click_access(x, y),
+                    Some(footer::Destination::Summary) => a.select_view(PanelView::Summary),
+                    Some(footer::Destination::Graphs) => a.select_view(PanelView::Graphs),
+                    Some(footer::Destination::Access) => a.select_view(PanelView::Access),
+                    None if a.view == PanelView::Access => a.click_access(x, y),
                     _ => (),
                 }
                 return LRESULT(0);
@@ -459,7 +469,7 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
                 &a.store,
                 &a.dashboard,
                 render::PaintMode::Editor {
-                    selected: if a.dashboard_controls.dashboard_page {
+                    selected: if a.dashboard_controls.page != settings::Page::Design {
                         None
                     } else {
                         a.selected
@@ -477,7 +487,8 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
             &a.store,
             &a.dashboard,
             render::PaintMode::Panel {
-                access: a.access_active.then_some(&a.ha.view),
+                access: (a.view == PanelView::Access).then_some(&a.ha.view),
+                workday: (a.view == PanelView::Graphs).then_some(&a.workday),
             },
         )
     };
@@ -497,10 +508,13 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
     }
 }
 impl App {
-    unsafe fn select_access(&mut self, active: bool) {
-        self.access_active = active;
+    unsafe fn select_view(&mut self, view: PanelView) {
+        self.view = view;
+        if view == PanelView::Graphs {
+            self.workday = workday::Presentation::now(&self.config);
+        }
         if let Some(client) = &self.ha_client {
-            client.set_active(active && self.screen_on);
+            client.set_active(view == PanelView::Access && self.screen_on);
         }
         let _ = InvalidateRect(Some(self.panel), None, false);
     }
@@ -600,7 +614,7 @@ impl App {
         }
         let ha_now = self.started.elapsed().as_millis() as u64;
         if let Some(client) = &mut self.ha_client {
-            client.set_active(active && self.access_active);
+            client.set_active(active && self.view == PanelView::Access);
             while let Ok(event) = client.events.try_recv() {
                 self.ha.apply(event, ha_now);
             }
@@ -646,6 +660,9 @@ impl App {
             self.persist_automatically();
         }
         if active {
+            if self.view == PanelView::Graphs {
+                self.workday = workday::Presentation::now(&self.config);
+            }
             self.ha.prepare(&self.config, ha_now);
             let system = self.system.poll(
                 self.config.dashboard.show_network_in_header,
@@ -1048,11 +1065,7 @@ impl App {
         }
     }
     unsafe fn save(&mut self) -> Result<(), String> {
-        if self.dashboard_controls.dashboard_page {
-            self.apply_dashboard_thresholds()?;
-        } else {
-            self.apply_fields()?;
-        }
+        self.apply_settings_page()?;
         self.config.save(&self.profile)?;
         self.dirty = false;
         self.edit_backup = Some(self.config.clone());
@@ -1140,11 +1153,7 @@ impl App {
                 }
             }
             ID_EXPORT => {
-                if self.dashboard_controls.dashboard_page {
-                    self.apply_dashboard_thresholds()?;
-                } else {
-                    self.apply_fields()?;
-                }
+                self.apply_settings_page()?;
                 if let Some(path) = file_dialog(self.editor, true, false) {
                     self.config.save(&path)?;
                 }
@@ -1218,7 +1227,7 @@ unsafe extern "system" fn editor_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                 return LRESULT(0);
             }
             WM_LBUTTONDOWN => {
-                if a.dashboard_controls.dashboard_page {
+                if a.dashboard_controls.page != settings::Page::Design {
                     return LRESULT(0);
                 }
                 let x = (lp.0 as i16) as f32;

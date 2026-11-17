@@ -102,6 +102,7 @@ pub struct Renderer {
 pub enum PaintMode<'a> {
     Panel {
         access: Option<&'a super::access::Presentation>,
+        workday: Option<&'a super::workday::Presentation>,
     },
     Editor {
         selected: Option<usize>,
@@ -282,9 +283,9 @@ impl Renderer {
         mode: PaintMode<'_>,
     ) -> Result<(), String> {
         let (width, height) = size;
-        let (selected, preview, access) = match mode {
-            PaintMode::Panel { access } => (None, false, access),
-            PaintMode::Editor { selected } => (selected, true, None),
+        let (selected, preview, access, workday) = match mode {
+            PaintMode::Panel { access, workday } => (None, false, access, workday),
+            PaintMode::Editor { selected } => (selected, true, None, None),
         };
         unsafe {
             if width == 0 || height == 0 {
@@ -304,6 +305,17 @@ impl Renderer {
                 b: 0.,
                 a: 1.,
             }));
+            if let Some(workday) = workday {
+                self.paint_workday(&t, &v, c, workday)?;
+                if c.footer.enabled {
+                    self.paint_footer(&t, &v, c, &super::footer::Presentation::default(), 1)?;
+                }
+                if let Err(e) = t.EndDraw(None, None) {
+                    self.reset();
+                    return Err(e.to_string());
+                }
+                return Ok(());
+            }
             if let Some(access) = access {
                 self.paint_access(&t, &v, access)?;
                 if c.footer.enabled {
@@ -506,6 +518,89 @@ impl Renderer {
             }
             Ok(())
         }
+    }
+    unsafe fn paint_workday(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        config: &Config,
+        view: &super::workday::Presentation,
+    ) -> Result<(), String> {
+        for block in &view.blocks {
+            let p = viewport.point(block.x, block.y);
+            let brush = self.brush(target, block.color, false)?;
+            target.FillRoundedRectangle(
+                &D2D1_ROUNDED_RECT {
+                    rect: D2D_RECT_F {
+                        left: p.X,
+                        top: p.Y,
+                        right: p.X + block.width * viewport.scale,
+                        bottom: p.Y + block.height * viewport.scale,
+                    },
+                    radiusX: 8. * viewport.scale,
+                    radiusY: 8. * viewport.scale,
+                },
+                &brush,
+            );
+        }
+        let sx = config.canvas_width / 1920.;
+        let sy = if config.footer.enabled {
+            config.footer_top()
+        } else {
+            config.canvas_height
+        } / 1050.;
+        let center = viewport.point(360. * sx, 450. * sy);
+        let radius = 200. * sx.min(sy) * viewport.scale;
+        let thickness = 18. * sx.min(sy) * viewport.scale;
+        let track = self.brush(target, "#283237", false)?;
+        let accent = self.brush(target, view.accent, false)?;
+        let ellipse = D2D1_ELLIPSE {
+            point: center,
+            radiusX: radius,
+            radiusY: radius,
+        };
+        target.DrawEllipse(&ellipse, &track, thickness, None);
+        if view.fraction >= 1. {
+            target.DrawEllipse(&ellipse, &accent, thickness, None);
+        } else if view.fraction > 0. {
+            let path = self
+                .factory
+                .CreatePathGeometry()
+                .map_err(|e| e.to_string())?;
+            let sink = path.Open().map_err(|e| e.to_string())?;
+            let end = std::f32::consts::TAU * view.fraction - std::f32::consts::FRAC_PI_2;
+            sink.BeginFigure(
+                D2D_POINT_2F {
+                    X: center.X,
+                    Y: center.Y - radius,
+                },
+                D2D1_FIGURE_BEGIN_HOLLOW,
+            );
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: D2D_POINT_2F {
+                    X: center.X + radius * end.cos(),
+                    Y: center.Y + radius * end.sin(),
+                },
+                size: D2D_SIZE_F {
+                    width: radius,
+                    height: radius,
+                },
+                rotationAngle: 0.,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: if view.fraction > 0.5 {
+                    D2D1_ARC_SIZE_LARGE
+                } else {
+                    D2D1_ARC_SIZE_SMALL
+                },
+            });
+            sink.EndFigure(D2D1_FIGURE_END_OPEN);
+            sink.Close().map_err(|e| e.to_string())?;
+            target.DrawGeometry(&path, &accent, thickness, None);
+        }
+        for label in &view.labels {
+            self.paint_prepared(target, viewport, label)?;
+        }
+        Ok(())
     }
     unsafe fn paint_access(
         &mut self,

@@ -9,6 +9,7 @@ mod model;
 mod platform;
 mod sensors;
 mod ui;
+mod work_schedule;
 
 fn main() {
     if let Err(e) = run() {

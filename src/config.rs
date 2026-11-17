@@ -78,6 +78,7 @@ pub struct Config {
     #[serde(default)]
     pub footer: FooterConfig,
     pub dashboard: DashboardConfig,
+    pub workday: crate::work_schedule::WorkdayConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -186,6 +187,7 @@ impl Default for Config {
             widgets: vec![],
             footer: FooterConfig { enabled: true },
             dashboard: DashboardConfig::default(),
+            workday: crate::work_schedule::WorkdayConfig::default(),
         };
         let mut add = |id: &str,
                        kind: WidgetKind,
@@ -584,6 +586,7 @@ impl Config {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.dashboard.validate()?;
+        self.workday.validate()?;
         if self.schema_version != 1 {
             return Err("Unsupported profile version".into());
         }
@@ -728,8 +731,13 @@ mod tests {
         c.validate().unwrap();
         let legacy: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(legacy.dashboard, DashboardConfig::default());
+        assert_eq!(
+            legacy.workday,
+            crate::work_schedule::WorkdayConfig::default()
+        );
         let roundtrip: Config = serde_json::from_slice(&serde_json::to_vec(&c).unwrap()).unwrap();
         assert_eq!(roundtrip.dashboard, c.dashboard);
+        assert_eq!(roundtrip.workday, c.workday);
     }
     #[test]
     fn invalid_thresholds_are_rejected_even_when_alerts_are_disabled() {

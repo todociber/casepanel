@@ -11,6 +11,7 @@ The two modes share an executable but not application memory. A blocked hardware
 | Module | Responsibility |
 |---|---|
 | `config` | Versioned profiles, validation limits, defaults, and backup writes |
+| `work_schedule` | Validated per-day entry/exit times, default workweek and next-shift lookup |
 | `ha_config` | Separate TOML integration settings, safe defaults, bounded reloads and credential-redacted errors |
 | `ha_client` | Lazy single-thread Tokio/reqwest worker, bounded channels, 3 s HTTP timeout and fixed HA service routing |
 | `model` | Sensor catalog, readings, quality, bindings, and bounded history |
@@ -23,9 +24,10 @@ The two modes share an executable but not application memory. A blocked hardware
 | `ipc` | Protected pipe, frame validation, supervision, and query watchdog |
 | `ui/monitors` | Active displays and persistent display identity |
 | `ui/render` | Direct2D/DirectWrite rendering, images, and unit conversion |
-| `ui/footer` | Footer readout, unavailable states, reserved slots, and settings hit testing |
+| `ui/footer` | Footer readout, unavailable states, navigation, and settings hit testing |
+| `ui/workday` | Local-clock workday countdown, completion ring and hourly timeline presentation |
 | `ui/dashboard` | One-second presentation cache: semantic colors, strings/UTF-16, optional labels, critical cards, and footer state |
-| `ui/settings` | Native Resumen/Diseño settings pages, live dashboard controls, validated thresholds and minimal preset |
+| `ui/settings` | Native Resumen/Diseño/Jornada settings pages, live dashboard controls, validated thresholds and minimal preset |
 | `ui/access` | Home Assistant card state, optimistic rollback, confirmation deadlines, grid pages and prepared visuals |
 | `ui` | Native windows and editor controls |
 
@@ -62,6 +64,8 @@ PresentMon 2.3.1 is a separate console helper with a pinned SHA-256 verified bef
 The helper disables display, input, and GPU timing tracking and uses a private per-user ETW session. A named mutex prevents competing CasePanel captures. Pausing/disconnecting stops that session; resuming recreates it. Capture restart is limited to three attempts per active session, spaced one minute apart after failure. A Windows job closes the helper if the collector terminates, and the next launch cleans up its own previously abandoned ETW session. No helper-supplied commands or profile-supplied executable paths are accepted.
 
 The footer is additive profile data and keeps schema version 1. Older profiles enable it only when there is at least a 1200 × 600 canvas and the bottom 150 pixels are completely clear. Explicit `footer.enabled: false` is preserved. Existing widgets are unchanged. Settings hit testing converts client coordinates through the same viewport as rendering, handles only local button release, and preserves the panel's non-activating behavior.
+
+The panel selects one of Summary, Graphs and Access. Graphs presents a validated per-weekday workday schedule stored in the profile's additive `workday` section, defaulting to Monday–Thursday 08:00–18:00 / Friday 08:00–17:00 using `GetLocalTime`, with explicit before-work, working, finished and rest-day states. Its prepared text and hourly blocks refresh on the existing active one-second tick and immediately when selected. Rendering reuses that snapshot; no network requests, profile schema version changes or extra timer are needed. Home Assistant remains on background polling outside Access.
 
 Software rendering at 1 Hz avoids the persistent graphics-driver allocations observed with accelerated rendering on the integrated AMD GPU. Text formats, brushes, and images are cached; drawing resources are recreated on resize or target loss.
 

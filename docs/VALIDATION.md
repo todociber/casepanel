@@ -13,6 +13,18 @@ Test PC: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7, and a 
 
 Local evidence lives in `artifacts`, including hardware diagnostics, recovery tests, and performance reports. It is excluded from public distributions because it contains machine identities.
 
+## Configurable workday release — November 17, 2026
+
+- All 51 tests passed, along with formatting and Clippy with warnings denied. The optimized v0.1.4 executable built successfully. Coverage includes custom weekday activation, minute-level times, next-shift lookup, all days disabled, invalid/reversed times and titles, bounded timeline labels, and legacy profile defaults/round trips.
+- Native UI validation used `artifacts/workday-config-ui/profile.json`. Ajustes → Jornada showed the editable title and all seven day rows. Tuesday's exit was changed from 18:00 to 18:15 and saved; the profile contained 18:15, and the Graphs view displayed 08:00–18:15, a 10:15:00 shift and the matching countdown/timeline. This test schedule was confined to the independent preview profile.
+- Schedules contain one interval per enabled day in the computer's local timezone. Overnight shifts, breaks and holidays are not included. Long-running resource benchmarks were not repeated.
+
+## Workday countdown update — November 17, 2026
+
+- All 48 tests passed. New checks cover Monday–Thursday shift boundaries, second-level countdowns, Friday's nine-hour shift, weekends, clamped completion after closing, and navigation to Graphs. Formatting and Clippy with warnings denied passed; a debug executable built successfully.
+- Native visual inspection used the independent `artifacts/workday-ui/profile.json` and an empty Home Assistant configuration. The Graphs view displayed the completion ring, second-by-second remaining time, local weekday/time, scheduled hours and hourly progress bar. Two observations confirmed the countdown and elapsed time advancing together. The installed executable and profile were not updated.
+- Breaks and holidays are not deducted. The schedule follows the computer's local timezone. No new long-running resource benchmark was performed.
+
 ## Home Assistant shortcuts update — November 16, 2026
 
 - 46 tests passed and Clippy passed with warnings denied. Added coverage includes TOML defaults/reloads and redacted parse errors, fixed service routes, bearer authentication against a loopback HTTP server, response bounds, a real three-second timeout, disabled redirects, navigation-driven polling changes, read-only actions, optimistic rollback, in-flight poll races, three-second confirmation expiry, 1.2-second success feedback, pagination and action-error visibility during reconciliation.

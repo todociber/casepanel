@@ -8,13 +8,13 @@ CasePanel displays hardware readings on a dedicated monitor using a configurable
 
 ## Download and install
 
-This is an early **0.1.3 preview** for Windows 11 x64. Low-level sensor support has been validated on one hardware configuration; see the support table and outstanding tests below.
+This is an early **0.1.4 preview** for Windows 11 x64. Low-level sensor support has been validated on one hardware configuration; see the support table and outstanding tests below.
 
 | Release asset | Purpose |
 |---|---|
-| `CasePanel-0.1.3-windows-x64.zip` | Recommended package: application, setup scripts, verified official PawnIO installer, documentation, licenses, and source |
+| `CasePanel-0.1.4-windows-x64.zip` | Recommended package: application, setup scripts, verified official PawnIO installer, documentation, licenses, and source |
 | `sensorpanel.exe` | Application executable for manual use; it is not a setup program and does not install dependencies or startup tasks |
-| `CasePanel-0.1.3-source.zip` | Source for this build, including the corresponding PawnIO module source |
+| `CasePanel-0.1.4-source.zip` | Source for this build, including the corresponding PawnIO module source |
 | `SHA256SUMS.txt` | SHA-256 checksums of the downloadable files |
 
 Extract the Windows ZIP, open PowerShell **as administrator** in the extracted folder, and run:
@@ -54,7 +54,7 @@ Profiles live at `%LOCALAPPDATA%\SensorPanel\profile.json`. The previous valid f
 
 Missing readings display `—`. Stale readings retain their last value, appear dimmed, and carry `*`. Zero RPM is valid. Bindings include device identity: replacing hardware preserves the layout and requires reassignment of the affected sensors.
 
-The bottom 150 pixels contain a persistent navigation strip. **Resumen** shows the hardware dashboard and game FPS; **Accesos** opens Home Assistant controls; **Gráficas** remains reserved and disabled. **Ajustes** opens the existing editor. Footer labels are Spanish. Existing profiles gain this strip only when the entire bottom area is unused; the widgets and bindings are preserved. Set `footer.enabled` to `false` in an exported JSON profile to hide it.
+The bottom 150 pixels contain a persistent navigation strip. **Resumen** shows the hardware dashboard and game FPS; **Gráficas** opens the workday countdown; **Accesos** opens Home Assistant controls. **Ajustes** opens the existing editor. Footer labels are Spanish. Existing profiles gain this strip only when the entire bottom area is unused; the widgets and bindings are preserved. Set `footer.enabled` to `false` in an exported JSON profile to hide it.
 
 **Ajustes → Resumen** controls semantic colors, critical card borders, bar micro-labels, AI reset timers, network traffic, footer visibility, and its three modes. Changes preview on the next one-second tick; **Save** persists them, and closing without saving restores the last saved profile. **Estilo minimalista** disables all dashboard additions and selects the original game-only footer, retaining your thresholds and widget layout. **Diseño** opens the existing widget/display editor.
 
@@ -67,6 +67,10 @@ The network header shows decimal **MB/s** across active physical adapters; virtu
 An external AI producer may optionally write `Claude5HResetAt` and `Codex5HResetAt` as **REG_SZ Unix timestamps in seconds (UTC)** under the existing `HKCU\Software\FinalWire\AIDA64\ImportValues` key. For example, a producer with an actual reset time can write `[string]$reset.ToUnixTimeSeconds()`. The panel carries this as optional `Sensor.reset_at_ms` metadata, refreshes it with the existing five-second Registry input, and shows remaining hours/minutes only for a future reset within five hours. Missing, invalid, or expired timestamps hide the timer; the panel does not infer a reset from the usage percentage. Existing producer scripts remain compatible.
 
 FPS and mean frame time come from the pinned PresentMon 2.3.1 console application, installed beside CasePanel. These are **rendered/presented frames**, not display refresh rate or a guarantee of counting generated frames. Capture follows a foreground graphics application, excludes common browsers, launchers and desktop processes, and retains the last selected application while it continues presenting. With multiple swap chains, it uses the busiest one instead of adding their rates. It displays a one-second rolling mean, updated once per second; no game shows **Sin juego**, and a capture error shows **FPS no disponibles**. The helper uses ETW without an overlay or input tracking, runs with the elevated collector, and stops when the panel's display is inactive. History and restart attempts are bounded.
+
+## Workday countdown
+
+**Gráficas → Ya es paja** shows a live `HH:MM:SS` countdown to the end of the working day, a completion ring and an hourly progress bar. Configure the title, enabled weekdays and each day's start/end time under **Ajustes → Jornada**. Times use `HH:MM` and must end after starting within the same day. Defaults are Monday–Thursday 08:00–18:00 and Friday 08:00–17:00, using the computer's local clock. Before entry it shows the full shift remaining and the time until work starts. At closing it reaches 100% and displays **¡Ya es paja!**. Days off show rest mode and the next configured shift; all days may be disabled. Valid edits preview immediately; **Save** persists them in the JSON profile's `workday` section (`title` and seven `days`, indexed Sunday first, with `enabled`, `start` and `end`). Existing profiles receive the default schedule. Closing without saving restores the prior settings. The calculation includes the entire scheduled interval without subtracting breaks or holidays. It updates on the existing one-second UI tick and recalculates when opening the tab.
 
 ## Home Assistant shortcuts
 

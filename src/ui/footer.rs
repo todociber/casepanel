@@ -152,7 +152,7 @@ pub fn buttons(c: &Config) -> [Button; 4] {
         width,
         height: 100.,
         label: ["Resumen", "Gráficas", "Accesos", "Ajustes"][i],
-        enabled: i != 1,
+        enabled: true,
     })
 }
 pub fn settings_hit(c: &Config, x: f32, y: f32) -> bool {
@@ -165,6 +165,7 @@ pub fn settings_hit(c: &Config, x: f32, y: f32) -> bool {
 }
 pub enum Destination {
     Summary,
+    Graphs,
     Access,
     Settings,
 }
@@ -182,6 +183,7 @@ pub fn navigation_hit(c: &Config, x: f32, y: f32) -> Option<Destination> {
         {
             return match index {
                 0 => Some(Destination::Summary),
+                1 => Some(Destination::Graphs),
                 2 => Some(Destination::Access),
                 _ => None,
             };
@@ -278,6 +280,14 @@ mod tests {
         assert!(settings_hit(&c, settings.x + 1., settings.y + 1.));
         assert!(!settings_hit(&c, buttons(&c)[1].x + 1., settings.y + 1.));
         assert!(!settings_hit(&c, settings.x, 900.));
+        let graphs = buttons(&c)[1];
+        assert!(matches!(
+            navigation_hit(&c, graphs.x + 1., graphs.y + 1.),
+            Some(Destination::Graphs)
+        ));
+        let mut hidden = c.clone();
+        hidden.footer.enabled = false;
+        assert!(navigation_hit(&hidden, graphs.x + 1., graphs.y + 1.).is_none());
     }
     #[test]
     fn stopped_game_clears_footer_instead_of_displaying_stale_fps() {

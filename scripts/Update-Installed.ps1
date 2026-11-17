@@ -14,6 +14,11 @@ $presentMon=Join-Path $Source 'vendor\presentmon\PresentMon.exe'
 if(-not(Test-Path -LiteralPath $presentMon)) {$presentMon=Join-Path $Source 'PresentMon.exe'}
 if(-not(Test-Path -LiteralPath $installedExe)) {throw 'No existing CasePanel installation. Run Install.ps1 instead.'}
 if(-not(Test-Path -LiteralPath $sourceExe)) {throw 'Build the release executable first.'}
+$sourceVersion=''
+$buildInfo=Join-Path $Source 'build-info.json'
+if(Test-Path -LiteralPath $buildInfo){$sourceVersion=(Get-Content -LiteralPath $buildInfo -Raw|ConvertFrom-Json).version}
+elseif(Test-Path -LiteralPath (Join-Path $Source 'Cargo.toml')){$sourceVersion=[regex]::Match([IO.File]::ReadAllText((Join-Path $Source 'Cargo.toml')),'(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value}
+if(-not $sourceVersion){throw 'Cannot identify the update version.'}
 if((Get-FileHash -LiteralPath $presentMon -Algorithm SHA256).Hash -ne '364E5D98D4D134BD54DD25C22ED2CA2F4883F8BC3ED6502BEE0C151E3436D30C') {throw 'PresentMon checksum mismatch.'}
 $backup=Join-Path $installRoot ('backups\'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $backup -Force | Out-Null
@@ -51,6 +56,7 @@ try {
     if(Test-Path -LiteralPath $metadataPath) {
         $metadata=Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
         $metadata.exe_sha256=$hash
+        $metadata | Add-Member -NotePropertyName version -NotePropertyValue $sourceVersion -Force
         $metadata | Add-Member -NotePropertyName updated_at -NotePropertyValue ((Get-Date).ToUniversalTime().ToString('o')) -Force
         $metadata | Add-Member -NotePropertyName presentmon_version -NotePropertyValue '2.3.1' -Force
         $metadata | ConvertTo-Json | Set-Content -LiteralPath $metadataPath -Encoding utf8
