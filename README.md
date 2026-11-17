@@ -8,13 +8,13 @@ CasePanel displays hardware readings on a dedicated monitor using a configurable
 
 ## Download and install
 
-This is an early **0.1.2 preview** for Windows 11 x64. Low-level sensor support has been validated on one hardware configuration; see the support table and outstanding tests below.
+This is an early **0.1.3 preview** for Windows 11 x64. Low-level sensor support has been validated on one hardware configuration; see the support table and outstanding tests below.
 
 | Release asset | Purpose |
 |---|---|
-| `CasePanel-0.1.2-windows-x64.zip` | Recommended package: application, setup scripts, verified official PawnIO installer, documentation, licenses, and source |
+| `CasePanel-0.1.3-windows-x64.zip` | Recommended package: application, setup scripts, verified official PawnIO installer, documentation, licenses, and source |
 | `sensorpanel.exe` | Application executable for manual use; it is not a setup program and does not install dependencies or startup tasks |
-| `CasePanel-0.1.2-source.zip` | Source for this build, including the corresponding PawnIO module source |
+| `CasePanel-0.1.3-source.zip` | Source for this build, including the corresponding PawnIO module source |
 | `SHA256SUMS.txt` | SHA-256 checksums of the downloadable files |
 
 Extract the Windows ZIP, open PowerShell **as administrator** in the extracted folder, and run:
