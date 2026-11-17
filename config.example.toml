@@ -1,0 +1,33 @@
+# Copy beside profile.json as config.toml, or pass --ha-config <path>.
+# Keep the real token in the local file, outside source control.
+[home_assistant]
+enabled = true
+base_url = "http://192.168.1.50:8123"
+token = ""
+poll_interval_secs = 5
+grid_columns = 3
+
+[[home_assistant.actions]]
+id = "office-light"
+label = "Luz Oficina"
+sublabel = "Escritorio"
+entity_id = "light.oficina"
+action_type = "Toggle"
+icon = "light"
+confirm_required = false
+
+[[home_assistant.actions]]
+id = "night-mode"
+label = "Modo noche"
+entity_id = "script.modo_noche"
+action_type = "Trigger"
+icon = "scene"
+confirm_required = true
+
+[[home_assistant.actions]]
+id = "room-temperature"
+label = "Temperatura"
+sublabel = "Habitación"
+entity_id = "sensor.temp_cuarto"
+action_type = "SensorReadOnly"
+icon = "temp"

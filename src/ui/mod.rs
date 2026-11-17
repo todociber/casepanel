@@ -1,3 +1,4 @@
+mod access;
 mod dashboard;
 mod footer;
 mod monitors;
@@ -91,6 +92,10 @@ struct App {
     system: crate::sensors::system::SystemTelemetry,
     dashboard: dashboard::DashboardState,
     dashboard_controls: settings::Controls,
+    ha_file: crate::ha_config::ConfigFile,
+    ha: access::State,
+    ha_client: Option<crate::ha_client::Client>,
+    access_active: bool,
     client: ipc::Client,
     panel: HWND,
     editor: HWND,
@@ -119,7 +124,12 @@ struct App {
     edit_backup: Option<Config>,
 }
 
-pub fn run(profile: PathBuf, preview: bool, exit_after: Option<u64>) -> Result<(), String> {
+pub fn run(
+    profile: PathBuf,
+    ha_path: Option<PathBuf>,
+    preview: bool,
+    exit_after: Option<u64>,
+) -> Result<(), String> {
     unsafe {
         let started = Instant::now();
         let Some(_instance) = platform::Instance::claim(if preview { "preview" } else { "panel" })?
@@ -129,6 +139,9 @@ pub fn run(profile: PathBuf, preview: bool, exit_after: Option<u64>) -> Result<(
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let (config, warning) = Config::load_or_recover(&profile);
         let autosave = warning.is_none();
+        let ha_file = crate::ha_config::ConfigFile::new(
+            ha_path.unwrap_or_else(|| crate::ha_config::default_path(&profile)),
+        );
         let instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
         for (class, proc) in [
             (
@@ -160,6 +173,10 @@ pub fn run(profile: PathBuf, preview: bool, exit_after: Option<u64>) -> Result<(
             system: crate::sensors::system::SystemTelemetry::default(),
             dashboard: dashboard::DashboardState::new(),
             dashboard_controls: settings::Controls::default(),
+            ha_file,
+            ha: access::State::default(),
+            ha_client: None,
+            access_active: false,
             client: ipc::Client::start(),
             panel: HWND::default(),
             editor: HWND::default(),
@@ -288,6 +305,13 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
         let a = &mut *state;
         match msg {
             WM_TIMER => {
+                if wp.0 == 2 {
+                    let _ = KillTimer(Some(hwnd), 2);
+                    a.ha.expire(a.started.elapsed().as_millis() as u64);
+                    a.schedule_ha_feedback();
+                    let _ = InvalidateRect(Some(hwnd), None, false);
+                    return LRESULT(0);
+                }
                 if a.exit_after
                     .is_some_and(|s| a.started.elapsed().as_secs() >= s)
                 {
@@ -310,8 +334,12 @@ unsafe extern "system" fn panel_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
                     render::Viewport::new(rect.right as f32, rect.bottom as f32, &a.config);
                 let x = (lp.0 as u16 as i16 as f32 - viewport.x) / viewport.scale;
                 let y = ((lp.0 >> 16) as u16 as i16 as f32 - viewport.y) / viewport.scale;
-                if footer::settings_hit(&a.config, x, y) {
-                    a.open_editor();
+                match footer::navigation_hit(&a.config, x, y) {
+                    Some(footer::Destination::Settings) => a.open_editor(),
+                    Some(footer::Destination::Summary) => a.select_access(false),
+                    Some(footer::Destination::Access) => a.select_access(true),
+                    None if a.access_active => a.click_access(x, y),
+                    _ => (),
                 }
                 return LRESULT(0);
             }
@@ -448,7 +476,9 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
             &a.config,
             &a.store,
             &a.dashboard,
-            render::PaintMode::Panel,
+            render::PaintMode::Panel {
+                access: a.access_active.then_some(&a.ha.view),
+            },
         )
     };
     let _ = EndPaint(hwnd, &ps);
@@ -467,6 +497,56 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
     }
 }
 impl App {
+    unsafe fn select_access(&mut self, active: bool) {
+        self.access_active = active;
+        if let Some(client) = &self.ha_client {
+            client.set_active(active && self.screen_on);
+        }
+        let _ = InvalidateRect(Some(self.panel), None, false);
+    }
+    unsafe fn schedule_ha_feedback(&self) {
+        let _ = KillTimer(Some(self.panel), 2);
+        if let Some(deadline) = self.ha.next_deadline() {
+            let now = self.started.elapsed().as_millis() as u64;
+            SetTimer(
+                Some(self.panel),
+                2,
+                deadline.saturating_sub(now).clamp(1, 3000) as u32,
+                None,
+            );
+        }
+    }
+    unsafe fn click_access(&mut self, x: f32, y: f32) {
+        let at = self.started.elapsed().as_millis() as u64;
+        if self.ha.view.retry.is_some_and(|r| r.contains(x, y)) {
+            if self.ha_client.as_ref().is_some_and(|c| c.retry()) {
+                self.ha.retry();
+            }
+        } else if self.ha.view.previous.is_some_and(|r| r.contains(x, y)) {
+            self.ha.change_page(-1);
+        } else if self.ha.view.next.is_some_and(|r| r.contains(x, y)) {
+            self.ha.change_page(1);
+        } else if let Some(id) = self
+            .ha
+            .view
+            .cards
+            .iter()
+            .find(|c| c.area.contains(x, y))
+            .map(|c| c.id.clone())
+            && let access::Click::Send(id) = self.ha.click(&id, at)
+            && !self.ha_client.as_ref().is_some_and(|c| c.action(&id))
+        {
+            self.ha.apply(
+                crate::ha_client::Event::Action {
+                    id,
+                    result: Err(crate::ha_client::Failure::Busy),
+                },
+                at,
+            );
+        }
+        self.schedule_ha_feedback();
+        let _ = InvalidateRect(Some(self.panel), None, false);
+    }
     unsafe fn position_panel(&mut self) {
         if self.preview {
             self.present = true;
@@ -510,6 +590,23 @@ impl App {
     }
     unsafe fn tick(&mut self) {
         let active = self.screen_on && (self.present || !self.editor.is_invalid());
+        if let Some(config) = self.ha_file.poll()
+            && self.ha.configure(config)
+        {
+            self.ha_client = None;
+            if self.ha.config.ready() {
+                self.ha_client = Some(crate::ha_client::Client::start(self.ha.config.clone()));
+            }
+        }
+        let ha_now = self.started.elapsed().as_millis() as u64;
+        if let Some(client) = &mut self.ha_client {
+            client.set_active(active && self.access_active);
+            while let Ok(event) = client.events.try_recv() {
+                self.ha.apply(event, ha_now);
+            }
+        }
+        self.ha.expire(ha_now);
+        self.schedule_ha_feedback();
         self.client.active.store(active, Ordering::Relaxed);
         let mut received = false;
         while let Ok(snapshot) = self.client.receiver.try_recv() {
@@ -549,6 +646,7 @@ impl App {
             self.persist_automatically();
         }
         if active {
+            self.ha.prepare(&self.config, ha_now);
             let system = self.system.poll(
                 self.config.dashboard.show_network_in_header,
                 self.config.footer.enabled

@@ -152,7 +152,7 @@ pub fn buttons(c: &Config) -> [Button; 4] {
         width,
         height: 100.,
         label: ["Resumen", "Gráficas", "Accesos", "Ajustes"][i],
-        enabled: i == 0 || i == 3,
+        enabled: i != 1,
     })
 }
 pub fn settings_hit(c: &Config, x: f32, y: f32) -> bool {
@@ -162,6 +162,32 @@ pub fn settings_hit(c: &Config, x: f32, y: f32) -> bool {
     let button = buttons(c)[3];
     (button.x..button.x + button.width).contains(&x)
         && (button.y..button.y + button.height).contains(&y)
+}
+pub enum Destination {
+    Summary,
+    Access,
+    Settings,
+}
+pub fn navigation_hit(c: &Config, x: f32, y: f32) -> Option<Destination> {
+    if settings_hit(c, x, y) {
+        return Some(Destination::Settings);
+    }
+    if !c.footer.enabled {
+        return None;
+    }
+    for (index, button) in buttons(c).iter().enumerate() {
+        if button.enabled
+            && (button.x..button.x + button.width).contains(&x)
+            && (button.y..button.y + button.height).contains(&y)
+        {
+            return match index {
+                0 => Some(Destination::Summary),
+                2 => Some(Destination::Access),
+                _ => None,
+            };
+        }
+    }
+    None
 }
 pub struct Readout {
     pub application: String,

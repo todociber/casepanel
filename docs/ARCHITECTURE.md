@@ -11,6 +11,8 @@ The two modes share an executable but not application memory. A blocked hardware
 | Module | Responsibility |
 |---|---|
 | `config` | Versioned profiles, validation limits, defaults, and backup writes |
+| `ha_config` | Separate TOML integration settings, safe defaults, bounded reloads and credential-redacted errors |
+| `ha_client` | Lazy single-thread Tokio/reqwest worker, bounded channels, 3 s HTTP timeout and fixed HA service routing |
 | `model` | Sensor catalog, readings, quality, bindings, and bounded history |
 | `platform` | Basic Win32 interoperability, user identity, DLL loading, and mutexes |
 | `sensors/basic` | Win32 CPU/RAM and external Registry input |
@@ -24,6 +26,7 @@ The two modes share an executable but not application memory. A blocked hardware
 | `ui/footer` | Footer readout, unavailable states, reserved slots, and settings hit testing |
 | `ui/dashboard` | One-second presentation cache: semantic colors, strings/UTF-16, optional labels, critical cards, and footer state |
 | `ui/settings` | Native Resumen/Diseño settings pages, live dashboard controls, validated thresholds and minimal preset |
+| `ui/access` | Home Assistant card state, optimistic rollback, confirmation deadlines, grid pages and prepared visuals |
 | `ui` | Native windows and editor controls |
 
 ## Readings and protocol
@@ -69,3 +72,13 @@ Dashboard options and threshold subfields have Serde defaults and remain schema 
 The panel uses `HWND_BOTTOM` and `SWP_NOACTIVATE` on startup and display changes. It stays behind applications and preserves the user's focus. The editor behaves as a normal window.
 
 Installed executables live in Program Files, writable by administrators and SYSTEM. Elevation is limited to installation and the collector. AI authentication and renewal remain outside both processes.
+
+## Home Assistant
+
+The unelevated panel owns Home Assistant. Neither the elevated hardware collector nor its IPC protocol receives credentials or commands. `config.toml` beside the selected JSON profile contains `[home_assistant]`; it is independent of layout imports/exports. The file is bounded to 64 KiB, compared at 1 Hz and parsed only when its contents change. Invalid edits stop the old worker and clear pending UI state; valid edits create a new worker only when enabled and fully configured. TOML source snippets and bearer tokens are excluded from errors/Debug output.
+
+Each worker has a current-thread Tokio runtime, an eight-command input channel and a 32-event output channel. Reqwest uses Windows native TLS, a three-second timeout including response consumption, no redirects and no environment proxies. State bodies are capped at 4 MiB and only configured entities enter the UI store. Reads use `/api/states`; commands are selected only by configured action ID and map to fixed `homeassistant/toggle`, `script/turn_on` or `scene/turn_on` paths. Read-only actions have no service path. No POST is automatically replayed. Dropping the client cancels outstanding futures and queued commands without joining on the UI thread.
+
+Polling schedules from the last completed read: configured seconds in Accesos, 30 seconds elsewhere. Navigation wakes the worker to recalculate its deadline. Actions are serialized; queued clicks older than three seconds are rejected instead of executing late. A completed or failed command schedules reconciliation via GET. Pending actions are tracked by entity so duplicated cards cannot issue overlapping toggles; in-flight poll replies preserve pending optimistic values. Errors restore the saved pre-click state.
+
+The one-second presentation tick prepares all on/off/pending/confirmation/success/unavailable/sensor variants. Input callbacks only select variants and enqueue commands; they do not format strings or recalculate colors. Confirmation uses a monotonic three-second deadline and trigger success a 1.2-second deadline. A one-shot Win32 timer switches back to existing variants at expiry. The render loop stays at 1 Hz apart from input/feedback invalidations. The grid paginates when actions exceed visible rows. Resumen and the widget editor keep their original state and dashboard settings.

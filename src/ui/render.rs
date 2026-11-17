@@ -99,9 +99,13 @@ pub struct Renderer {
     formats: BTreeMap<String, IDWriteTextFormat>,
     images: BTreeMap<String, ID2D1Bitmap>,
 }
-pub enum PaintMode {
-    Panel,
-    Editor { selected: Option<usize> },
+pub enum PaintMode<'a> {
+    Panel {
+        access: Option<&'a super::access::Presentation>,
+    },
+    Editor {
+        selected: Option<usize>,
+    },
 }
 impl Renderer {
     pub fn new() -> Result<Self, String> {
@@ -275,12 +279,12 @@ impl Renderer {
         c: &Config,
         store: &Store,
         dashboard: &DashboardState,
-        mode: PaintMode,
+        mode: PaintMode<'_>,
     ) -> Result<(), String> {
         let (width, height) = size;
-        let (selected, preview) = match mode {
-            PaintMode::Panel => (None, false),
-            PaintMode::Editor { selected } => (selected, true),
+        let (selected, preview, access) = match mode {
+            PaintMode::Panel { access } => (None, false, access),
+            PaintMode::Editor { selected } => (selected, true, None),
         };
         unsafe {
             if width == 0 || height == 0 {
@@ -300,6 +304,17 @@ impl Renderer {
                 b: 0.,
                 a: 1.,
             }));
+            if let Some(access) = access {
+                self.paint_access(&t, &v, access)?;
+                if c.footer.enabled {
+                    self.paint_footer(&t, &v, c, &access.footer, 2)?;
+                }
+                if let Err(e) = t.EndDraw(None, None) {
+                    self.reset();
+                    return Err(e.to_string());
+                }
+                return Ok(());
+            }
             for (index, w) in c.widgets.iter().enumerate() {
                 let p = v.point(w.x, w.y);
                 let rect = D2D_RECT_F {
@@ -483,7 +498,7 @@ impl Renderer {
                 self.paint_prepared(&t, &v, label)?;
             }
             if c.footer.enabled {
-                self.paint_footer(&t, &v, c, &dashboard.footer)?;
+                self.paint_footer(&t, &v, c, &dashboard.footer, 0)?;
             }
             if let Err(e) = t.EndDraw(None, None) {
                 self.reset();
@@ -491,6 +506,146 @@ impl Renderer {
             }
             Ok(())
         }
+    }
+    unsafe fn paint_access(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        view: &super::access::Presentation,
+    ) -> Result<(), String> {
+        let rect = |a: super::access::Area| {
+            let p = viewport.point(a.x, a.y);
+            D2D_RECT_F {
+                left: p.X,
+                top: p.Y,
+                right: p.X + a.width * viewport.scale,
+                bottom: p.Y + a.height * viewport.scale,
+            }
+        };
+        for area in [view.retry, view.previous, view.next].into_iter().flatten() {
+            let background = self.brush(target, "#18181B", false)?;
+            target.FillRoundedRectangle(
+                &D2D1_ROUNDED_RECT {
+                    rect: rect(area),
+                    radiusX: 6. * viewport.scale,
+                    radiusY: 6. * viewport.scale,
+                },
+                &background,
+            );
+        }
+        for card in &view.cards {
+            let variant = &card.variants[card.visual as usize];
+            let fill = self.brush(target, variant.fill, false)?;
+            let border = self.brush(target, variant.border, false)?;
+            let shape = D2D1_ROUNDED_RECT {
+                rect: rect(card.area),
+                radiusX: 12. * viewport.scale,
+                radiusY: 12. * viewport.scale,
+            };
+            target.FillRoundedRectangle(&shape, &fill);
+            target.DrawRoundedRectangle(
+                &shape,
+                &border,
+                variant.border_width * viewport.scale,
+                None,
+            );
+            self.access_icon(
+                target,
+                viewport,
+                &card.icon,
+                card.icon_at,
+                variant.foreground,
+            )?;
+            self.paint_prepared(
+                target,
+                viewport,
+                if card.visual == super::access::Visual::Confirm {
+                    &card.confirm_title
+                } else {
+                    &card.title
+                },
+            )?;
+            if let Some(sublabel) = &card.sublabel {
+                self.paint_prepared(target, viewport, sublabel)?;
+            }
+            self.paint_prepared(target, viewport, &variant.text)?;
+        }
+        for label in &view.labels {
+            self.paint_prepared(target, viewport, label)?;
+        }
+        Ok(())
+    }
+    unsafe fn access_icon(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        icon: &str,
+        center: (f32, f32),
+        color: &str,
+    ) -> Result<(), String> {
+        let brush = self.brush(target, color, false)?;
+        let (cx, cy) = center;
+        let line = |x1, y1, x2, y2| {
+            target.DrawLine(
+                viewport.point(cx + x1, cy + y1),
+                viewport.point(cx + x2, cy + y2),
+                &brush,
+                2. * viewport.scale,
+                None,
+            )
+        };
+        let circle = |x, y, r| {
+            target.DrawEllipse(
+                &D2D1_ELLIPSE {
+                    point: viewport.point(cx + x, cy + y),
+                    radiusX: r * viewport.scale,
+                    radiusY: r * viewport.scale,
+                },
+                &brush,
+                2. * viewport.scale,
+                None,
+            )
+        };
+        match icon {
+            "light" => {
+                circle(0., -5., 11.);
+                line(-7., 5., -5., 13.);
+                line(7., 5., 5., 13.);
+                line(-5., 13., 5., 13.);
+                line(-4., 18., 4., 18.);
+            }
+            "temp" => {
+                circle(0., 12., 7.);
+                line(-4., 6., -4., -16.);
+                line(4., 6., 4., -16.);
+                line(-4., -16., 4., -16.);
+                line(0., 8., 0., -9.);
+            }
+            "ac" => {
+                for n in 0..6 {
+                    let a = n as f32 * std::f32::consts::TAU / 6.;
+                    line(0., 0., a.cos() * 19., a.sin() * 19.);
+                }
+            }
+            "solar" => {
+                circle(0., 0., 9.);
+                for n in 0..8 {
+                    let a = n as f32 * std::f32::consts::FRAC_PI_4;
+                    line(a.cos() * 14., a.sin() * 14., a.cos() * 20., a.sin() * 20.);
+                }
+            }
+            "scene" => {
+                line(-19., 0., 19., 0.);
+                line(0., -19., 0., 19.);
+                line(-12., -12., 12., 12.);
+                line(12., -12., -12., 12.);
+            }
+            _ => {
+                circle(0., 3., 14.);
+                line(0., -20., 0., 0.);
+            }
+        }
+        Ok(())
     }
     unsafe fn paint_prepared(
         &mut self,
@@ -549,6 +704,7 @@ impl Renderer {
         viewport: &Viewport,
         config: &Config,
         presentation: &super::footer::Presentation,
+        active_tab: usize,
     ) -> Result<(), String> {
         let top = config.footer_top();
         let point = |x, y| viewport.point(x, y);
@@ -564,7 +720,15 @@ impl Renderer {
         let black = self.brush(target, "#000000", false)?;
         target.FillRectangle(&rect(0., top, config.canvas_width, 150.), &black);
         for (i, button) in super::footer::buttons(config).iter().enumerate() {
-            let fill = self.brush(target, if i == 0 { "#171717" } else { "#0D0D0D" }, false)?;
+            let fill = self.brush(
+                target,
+                if i == active_tab {
+                    "#171717"
+                } else {
+                    "#0D0D0D"
+                },
+                false,
+            )?;
             let foreground = if button.enabled { "#BBBBBB" } else { "#656565" };
             let brush = self.brush(target, foreground, false)?;
             target.FillRoundedRectangle(
@@ -575,7 +739,7 @@ impl Renderer {
                 },
                 &fill,
             );
-            if i == 0 {
+            if i == active_tab {
                 let accent = self.brush(
                     target,
                     if config.dashboard.enable_semantic_colors {

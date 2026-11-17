@@ -13,6 +13,13 @@ Test PC: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7, and a 
 
 Local evidence lives in `artifacts`, including hardware diagnostics, recovery tests, and performance reports. It is excluded from public distributions because it contains machine identities.
 
+## Home Assistant shortcuts update — November 16, 2026
+
+- 46 tests passed and Clippy passed with warnings denied. Added coverage includes TOML defaults/reloads and redacted parse errors, fixed service routes, bearer authentication against a loopback HTTP server, response bounds, a real three-second timeout, disabled redirects, navigation-driven polling changes, read-only actions, optimistic rollback, in-flight poll races, three-second confirmation expiry, 1.2-second success feedback, pagination and action-error visibility during reconciliation.
+- Native UI validation used `artifacts/ha-ui/profile.json`, an independent TOML file, and a Python HTTP server bound only to `127.0.0.1`. The initial guide appeared without credentials. Editing TOML loaded six simulated cards in place, including on/off/unavailable toggles and numeric temperature/solar values. The first toggle showed its optimistic state immediately. An expired confirmation did not send a command; a double tap invoked the simulated script once. A rejected toggle restored its previous value. The disconnected header and Reintentar recovery were inspected, and returning to Resumen preserved the dashboard.
+- The local request log recorded foreground GET intervals around five seconds and background intervals of 30.02 and 30.01 seconds after returning to Resumen. Only three simulated POSTs were sent during the interaction checks: two toggles and one script call. The preview and mock server were closed after validation. No real Home Assistant credentials or devices were used, and the installed executable/profile/tasks were not updated.
+- The request timeout and input/feedback timers do not add a continuous animation loop. Long-running CPU/private-memory benchmarks have not been repeated for the network client; prior figures below do not cover a configured Home Assistant worker.
+
 ## Configurable dashboard update — November 16, 2026
 
 - 34 unit tests passed, including partial/legacy profile defaults and round trips, initial profile creation, invalid thresholds, exact warning/critical boundaries, Celsius comparisons for Fahrenheit widgets, stale alert suppression, independently disabled overlays, optional AI reset metadata, all footer modes, missing/stale CPU+GPU power, and network counter resets/reconnects. Clippy passed with warnings denied; the optimized executable built successfully.

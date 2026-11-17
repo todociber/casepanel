@@ -45,7 +45,7 @@ Copy-Item -LiteralPath $exe -Destination $package -Force
 Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\PresentMon.exe') -Destination $package -Force
 Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\LICENSE.txt') -Destination (Join-Path $licenses 'PresentMon-MIT.txt') -Force
 Copy-Item -LiteralPath $installer -Destination (Join-Path $package 'PawnIO_setup.exe') -Force
-foreach($file in 'README.md','THIRD-PARTY-NOTICES.md','LICENSE'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $package -Force}
+foreach($file in 'README.md','THIRD-PARTY-NOTICES.md','LICENSE','config.example.toml'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $package -Force}
 Copy-Item -LiteralPath (Join-Path $root 'docs') -Destination $package -Recurse -Force
 foreach($file in 'Install.ps1','Update-Installed.ps1','Uninstall.ps1','Prepare-PawnIO.ps1','Prepare-Modules.ps1','Prepare-PresentMon.ps1','Measure.ps1','Verify-Startup.ps1','Test-Hardware.ps1'){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $package 'scripts') -Force}
 Copy-Item -LiteralPath (Join-Path $root 'vendor\pawnio\modules\COPYING') -Destination (Join-Path $licenses 'PawnIO-Modules-LGPL-2.1.txt') -Force
@@ -64,7 +64,7 @@ foreach($directory in 'src','.cargo','docs','scripts','.github'){
     $path=Join-Path $root $directory
     if(Test-Path -LiteralPath $path){Copy-Item -LiteralPath $path -Destination $sourceRoot -Recurse -Force}
 }
-foreach($file in 'Cargo.toml','Cargo.lock','rust-toolchain.toml','build.rs','app.manifest','README.md','LICENSE','THIRD-PARTY-NOTICES.md','.gitignore','.gitattributes'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $sourceRoot -Force}
+foreach($file in 'Cargo.toml','Cargo.lock','rust-toolchain.toml','build.rs','app.manifest','README.md','LICENSE','THIRD-PARTY-NOTICES.md','config.example.toml','.gitignore','.gitattributes'){Copy-Item -LiteralPath (Join-Path $root $file) -Destination $sourceRoot -Force}
 $referenceTarget=Join-Path $sourceRoot 'vendor\reference'
 New-Item -ItemType Directory -Path (Join-Path $sourceRoot 'vendor\presentmon') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'vendor\presentmon\LICENSE.txt') -Destination (Join-Path $sourceRoot 'vendor\presentmon\LICENSE.txt') -Force

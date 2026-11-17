@@ -42,4 +42,4 @@ Pinned SHA-256: `364e5d98d4d134bd54dd25c22ed2ca2f4883f8bc3ed6502bee0c151e3436d30
 
 ## Rust crates
 
-`windows` and `windows-numerics`: Microsoft, MIT/Apache-2.0. `serde`, `serde_json`, and `sha2`: MIT/Apache-2.0. Exact versions and transitive dependencies are fixed in Cargo.lock. Release packages include available license/notice files from the resolved crates. Their source and manifests are available from crates.io and the upstream repositories identified in those manifests.
+`windows` and `windows-numerics`: Microsoft, MIT/Apache-2.0. `serde`, `serde_json`, `sha2`, `reqwest`, `toml`, and `native-tls`: MIT/Apache-2.0. `tokio`: MIT. HTTPS uses Windows SChannel through `native-tls`/`schannel`; no OpenSSL DLL is redistributed in the Windows build. Exact versions and transitive dependencies are fixed in Cargo.lock. Release packages include available license/notice files from the resolved crates. Their source and manifests are available from crates.io and the upstream repositories identified in those manifests.

@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 #![allow(unsafe_op_in_unsafe_fn)]
 mod config;
+mod ha_client;
+mod ha_config;
 mod ipc;
 mod logging;
 mod model;
@@ -94,6 +96,7 @@ fn run() -> Result<(), String> {
         .unwrap_or_else(config::default_path);
     ui::run(
         path,
+        option("--ha-config").map(std::path::PathBuf::from),
         args.iter().any(|a| a == "--preview"),
         option("--exit-after").and_then(|s| s.parse().ok()),
     )

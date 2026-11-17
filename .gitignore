@@ -13,6 +13,7 @@
 
 # Local credentials and signing material.
 .env
+/config.toml
 .env.*
 !.env.example
 *.pfx
