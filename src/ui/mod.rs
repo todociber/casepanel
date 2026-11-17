@@ -1,6 +1,8 @@
+mod dashboard;
 mod footer;
 mod monitors;
 mod render;
+mod settings;
 use crate::{
     config::{Config, Widget, WidgetKind},
     ipc,
@@ -86,6 +88,9 @@ struct App {
     profile: PathBuf,
     store: Store,
     basic: Basic,
+    system: crate::sensors::system::SystemTelemetry,
+    dashboard: dashboard::DashboardState,
+    dashboard_controls: settings::Controls,
     client: ipc::Client,
     panel: HWND,
     editor: HWND,
@@ -152,6 +157,9 @@ pub fn run(profile: PathBuf, preview: bool, exit_after: Option<u64>) -> Result<(
             profile,
             store: Store::default(),
             basic: Basic::new(),
+            system: crate::sensors::system::SystemTelemetry::default(),
+            dashboard: dashboard::DashboardState::new(),
+            dashboard_controls: settings::Controls::default(),
             client: ipc::Client::start(),
             panel: HWND::default(),
             editor: HWND::default(),
@@ -421,8 +429,14 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
                 (r.right.max(1) as u32, r.bottom.max(1) as u32),
                 &a.config,
                 &a.store,
-                a.selected,
-                true,
+                &a.dashboard,
+                render::PaintMode::Editor {
+                    selected: if a.dashboard_controls.dashboard_page {
+                        None
+                    } else {
+                        a.selected
+                    },
+                },
             )
         } else {
             Ok(())
@@ -433,8 +447,8 @@ unsafe fn paint(a: &mut App, hwnd: HWND, editor: bool) {
             (r.right.max(1) as u32, r.bottom.max(1) as u32),
             &a.config,
             &a.store,
-            None,
-            false,
+            &a.dashboard,
+            render::PaintMode::Panel,
         )
     };
     let _ = EndPaint(hwnd, &ps);
@@ -497,11 +511,6 @@ impl App {
     unsafe fn tick(&mut self) {
         let active = self.screen_on && (self.present || !self.editor.is_invalid());
         self.client.active.store(active, Ordering::Relaxed);
-        if active {
-            for s in self.basic.poll() {
-                self.store.update(s);
-            }
-        }
         let mut received = false;
         while let Ok(snapshot) = self.client.receiver.try_recv() {
             if !snapshot.diagnostics.is_empty() {
@@ -509,6 +518,12 @@ impl App {
             }
             let _ = self.store.apply(snapshot);
             received = true;
+        }
+        // Local Windows/Registry input is authoritative even with an older collector.
+        if active {
+            for s in self.basic.poll() {
+                self.store.update(s);
+            }
         }
         let mut changed = false;
         for w in &self.config.widgets {
@@ -534,10 +549,20 @@ impl App {
             self.persist_automatically();
         }
         if active {
+            let system = self.system.poll(
+                self.config.dashboard.show_network_in_header,
+                self.config.footer.enabled
+                    && self.config.dashboard.bottom_bar_mode
+                        != crate::config::BottomBarMode::GameOnly,
+            );
+            self.dashboard
+                .update(&self.config, &self.store, &system, crate::model::now_ms());
             let _ = InvalidateRect(Some(self.panel), None, false);
             if !self.editor.is_invalid() {
                 let _ = InvalidateRect(Some(self.editor), None, false);
             }
+        } else {
+            self.system = crate::sensors::system::SystemTelemetry::default();
         }
         if received
             && !self.editor.is_invalid()
@@ -596,7 +621,7 @@ impl App {
         if let Ok(hwnd) = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             w!("SensorPanel.Editor"),
-            w!("CasePanel — visual editor"),
+            w!("CasePanel — Ajustes"),
             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
             40,
             30,
@@ -722,8 +747,9 @@ impl App {
         self.populate_widgets();
         self.populate_sensors();
         self.populate_monitors();
+        self.create_dashboard_controls();
         self.layout_controls();
-        self.selected = Some(0);
+        self.selected = (!self.config.widgets.is_empty()).then_some(0);
         self.load_fields();
     }
     unsafe fn layout_controls(&self) {
@@ -733,7 +759,7 @@ impl App {
         let col = 220;
         let place = |id: usize, x: i32, y: i32, width: i32, height: i32| {
             if let Ok(h) = GetDlgItem(Some(self.editor), id as i32) {
-                let _ = MoveWindow(h, left + x, y, width, height, true);
+                let _ = MoveWindow(h, left + x, y + 40, width, height, true);
             }
         };
         place(500, 0, 7, 440, 18);
@@ -774,7 +800,8 @@ impl App {
         place(504, 0, 710, 330, 18);
         place(ID_DELAY, 340, 707, 105, 24);
         place(ID_SETTINGS, 0, 740, 450, 28);
-        place(ID_STATUS, 0, 780, 450, (rect.bottom - 790).max(60));
+        place(ID_STATUS, 0, 780, 450, (rect.bottom - 830).max(60));
+        self.layout_dashboard_controls(&rect, left);
     }
     unsafe fn populate_widgets(&mut self) {
         let _ = SendMessageW(self.widget_combo, CB_RESETCONTENT, None, None);
@@ -923,7 +950,11 @@ impl App {
         }
     }
     unsafe fn save(&mut self) -> Result<(), String> {
-        self.apply_fields()?;
+        if self.dashboard_controls.dashboard_page {
+            self.apply_dashboard_thresholds()?;
+        } else {
+            self.apply_fields()?;
+        }
         self.config.save(&self.profile)?;
         self.dirty = false;
         self.edit_backup = Some(self.config.clone());
@@ -932,6 +963,9 @@ impl App {
         Ok(())
     }
     unsafe fn command(&mut self, id: usize, notification: usize) -> Result<(), String> {
+        if self.dashboard_command(id, notification)? {
+            return Ok(());
+        }
         if id == ID_WIDGET && notification == CBN_SELCHANGE as usize {
             let i = SendMessageW(self.widget_combo, CB_GETCURSEL, None, None).0;
             if i >= 0 {
@@ -997,17 +1031,22 @@ impl App {
                 if let Some(path) = file_dialog(self.editor, false, false) {
                     let c = Config::load(&path)?;
                     self.config = c;
-                    self.selected = Some(0);
+                    self.selected = (!self.config.widgets.is_empty()).then_some(0);
                     self.dirty = true;
                     self.populate_widgets();
                     self.load_fields();
                     self.populate_monitors();
+                    self.load_dashboard_controls();
                     self.position_panel();
                     self.invalidate();
                 }
             }
             ID_EXPORT => {
-                self.apply_fields()?;
+                if self.dashboard_controls.dashboard_page {
+                    self.apply_dashboard_thresholds()?;
+                } else {
+                    self.apply_fields()?;
+                }
                 if let Some(path) = file_dialog(self.editor, true, false) {
                     self.config.save(&path)?;
                 }
@@ -1035,6 +1074,8 @@ impl App {
                 self.position_panel();
                 self.config.save(&self.profile)?;
                 self.dirty = false;
+                self.edit_backup = Some(self.config.clone());
+                self.autosave = true;
                 self.message="Display saved. Run the installer again to change the delay of existing startup tasks.".into();
             }
             _ => (),
@@ -1079,6 +1120,9 @@ unsafe extern "system" fn editor_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                 return LRESULT(0);
             }
             WM_LBUTTONDOWN => {
+                if a.dashboard_controls.dashboard_page {
+                    return LRESULT(0);
+                }
                 let x = (lp.0 as i16) as f32;
                 let y = ((lp.0 >> 16) as i16) as f32;
                 let mut rect = RECT::default();

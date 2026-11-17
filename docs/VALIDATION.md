@@ -13,6 +13,13 @@ Test PC: Windows 11 x64, Ryzen 9 9900X, RTX 5080, X870 AORUS ELITE WIFI7, and a 
 
 Local evidence lives in `artifacts`, including hardware diagnostics, recovery tests, and performance reports. It is excluded from public distributions because it contains machine identities.
 
+## Configurable dashboard update — November 16, 2026
+
+- 34 unit tests passed, including partial/legacy profile defaults and round trips, initial profile creation, invalid thresholds, exact warning/critical boundaries, Celsius comparisons for Fahrenheit widgets, stale alert suppression, independently disabled overlays, optional AI reset metadata, all footer modes, missing/stale CPU+GPU power, and network counter resets/reconnects. Clippy passed with warnings denied; the optimized executable built successfully.
+- Native UI validation used a separate `artifacts/dashboard-preview.json` profile. Lowering the memory/load thresholds showed amber bars, then a coral RAM bar and subtle critical border. Disabling semantic colors removed both. The minimal preset hid micro-labels and network text, removed colored navigation accents, selected the original game-only footer, retained thresholds, and saved the expected JSON. The release preview loaded those saved settings. Resumen shows an unselected dashboard preview; Diseño retains widget selection and the original editor controls.
+- The Windows power-plan name and physical-adapter network readout were visible. The AI reset integration is covered with sample metadata in unit tests; the external producer was not changed. The installed panel/profile and scheduled tasks were not updated. Hardware FPS/temperature/power remained owned by the existing installed session, so the separate preview did not establish a new live hardware benchmark.
+- The render timer remains 1 Hz and telemetry presentation is prepared once per tick. No new animation timer or sampling subprocess was added. This update has not repeated the long-running CPU/private-memory benchmark below; no new performance figures are claimed.
+
 ## Footer and FPS update — November 15, 2026
 
 - 24 tests passed and Clippy passed with warnings denied. New coverage checks real PresentMon CSV column casing and quoted names, invalid timings, foreground selection, dominant swap chains, expiry, bounded frame history, footer hit testing, stale FPS removal, and migration without changing widgets.

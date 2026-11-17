@@ -1,3 +1,4 @@
+use super::dashboard::{DashboardState, PreparedText};
 use crate::{
     config::{Config, Widget, WidgetKind, parse_color},
     model::{Quality, Sensor, Store, now_ms},
@@ -41,10 +42,16 @@ impl Viewport {
     }
 }
 pub fn resolve<'a>(c: &Config, store: &'a Store, key: &str) -> Option<&'a Sensor> {
-    store
-        .sensors
-        .get(key)
-        .or_else(|| c.bindings.get(key).and_then(|id| store.sensors.get(id)))
+    if let Some(id) = c.bindings.get(key) {
+        return store.sensors.get(id);
+    }
+    if let Some(sensor) = store.sensors.get(key) {
+        return Some(sensor);
+    }
+    // Unbound optional dashboard metrics may resolve only to an unambiguous device.
+    let mut matches = store.sensors.values().filter(|s| s.key == key);
+    let sensor = matches.next()?;
+    matches.next().is_none().then_some(sensor)
 }
 pub fn formatted(w: &Widget, s: Option<&Sensor>) -> String {
     let Some(s) = s else {
@@ -88,21 +95,17 @@ pub struct Renderer {
     wic: IWICImagingFactory,
     target: Option<ID2D1HwndRenderTarget>,
     size: (u32, u32),
-    cpu_name: String,
-    memory_name: String,
     brushes: BTreeMap<String, ID2D1SolidColorBrush>,
     formats: BTreeMap<String, IDWriteTextFormat>,
     images: BTreeMap<String, ID2D1Bitmap>,
 }
+pub enum PaintMode {
+    Panel,
+    Editor { selected: Option<usize> },
+}
 impl Renderer {
     pub fn new() -> Result<Self, String> {
         unsafe {
-            let inventory = platform::inventory();
-            let memory_name = if inventory.memory_speed_mt > 0 {
-                format!("{}-{}", inventory.memory_type, inventory.memory_speed_mt)
-            } else {
-                "RAM".into()
-            };
             Ok(Self {
                 factory: D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, None)
                     .map_err(|e| e.to_string())?,
@@ -112,8 +115,6 @@ impl Renderer {
                     .map_err(|e| e.to_string())?,
                 target: None,
                 size: (0, 0),
-                cpu_name: inventory.cpu_name.replace(" 12-Core Processor", ""),
-                memory_name,
                 brushes: BTreeMap::new(),
                 formats: BTreeMap::new(),
                 images: BTreeMap::new(),
@@ -273,10 +274,14 @@ impl Renderer {
         size: (u32, u32),
         c: &Config,
         store: &Store,
-        selected: Option<usize>,
-        preview: bool,
+        dashboard: &DashboardState,
+        mode: PaintMode,
     ) -> Result<(), String> {
         let (width, height) = size;
+        let (selected, preview) = match mode {
+            PaintMode::Panel => (None, false),
+            PaintMode::Editor { selected } => (selected, true),
+        };
         unsafe {
             if width == 0 || height == 0 {
                 return Ok(());
@@ -303,43 +308,18 @@ impl Renderer {
                     right: p.X + w.width * v.scale,
                     bottom: p.Y + w.height * v.scale,
                 };
-                let sensor = resolve(c, store, &w.sensor);
-                let dim = !w.sensor.is_empty()
-                    && sensor.is_none_or(|s| {
-                        matches!(
-                            s.current_quality(now_ms()),
-                            Quality::Stale | Quality::Error | Quality::Unavailable
-                        )
-                    });
-                let brush = self.brush(&t, &w.color, dim)?;
+                let Some(state) = dashboard.widgets.get(&w.id) else {
+                    continue;
+                };
+                let brush = self.brush(&t, &state.color, state.dim)?;
                 let bg = self.brush(&t, &w.background, false)?;
-                let value =
-                    sensor.and_then(|s| s.value.and_then(|v| convert_unit(v, &s.unit, &w.unit)));
-                let fraction = value.map(|x| ((x - w.min) / (w.max - w.min)).clamp(0., 1.) as f32);
+                let fraction = state.fraction;
                 match w.kind {
                     WidgetKind::Rectangle => t.FillRectangle(&rect, &brush),
                     WidgetKind::Text | WidgetKind::Value | WidgetKind::Clock => {
-                        let text = match w.kind {
-                            WidgetKind::Value => formatted(w, sensor),
-                            WidgetKind::Clock => {
-                                let mut local = platform::LocalTime::default();
-                                platform::GetLocalTime(&mut local);
-                                format!("{:02}:{:02}:{:02}", local.hour, local.minute, local.second)
-                            }
-                            _ => {
-                                let gpu = resolve(c, store, "gpu.temperature")
-                                    .map(|s| s.label.split(": ").next().unwrap_or("GPU"))
-                                    .unwrap_or("not detected");
-                                w.text
-                                    .replace("{cpu_name}", &self.cpu_name)
-                                    .replace("{gpu_name}", gpu)
-                                    .replace("{memory_name}", &self.memory_name)
-                            }
-                        };
-                        let words: Vec<_> = text.encode_utf16().collect();
                         let format = self.format(w, v.scale)?;
                         t.DrawText(
-                            &words,
+                            &state.words,
                             &format,
                             &rect,
                             &brush,
@@ -440,7 +420,7 @@ impl Renderer {
                     }
                     WidgetKind::Graph => {
                         t.FillRectangle(&rect, &bg);
-                        if let Some(s) = sensor
+                        if let Some(s) = resolve(c, store, &w.sensor)
                             && let Some(history) = store.history.get(&s.id)
                         {
                             let now = now_ms();
@@ -480,8 +460,30 @@ impl Renderer {
                     );
                 }
             }
+            for w in c.widgets.iter().filter(|w| {
+                dashboard.critical_cards.contains(&w.id) && w.kind == WidgetKind::Rectangle
+            }) {
+                let p = v.point(w.x, w.y);
+                let border = self.brush(&t, "#EF4444", false)?;
+                border.SetOpacity(0.6);
+                t.DrawRectangle(
+                    &D2D_RECT_F {
+                        left: p.X + 0.5,
+                        top: p.Y + 0.5,
+                        right: p.X + w.width * v.scale - 0.5,
+                        bottom: p.Y + w.height * v.scale - 0.5,
+                    },
+                    &border,
+                    1.,
+                    None,
+                );
+                border.SetOpacity(1.);
+            }
+            for label in &dashboard.labels {
+                self.paint_prepared(&t, &v, label)?;
+            }
             if c.footer.enabled {
-                self.paint_footer(&t, &v, c, store)?;
+                self.paint_footer(&t, &v, c, &dashboard.footer)?;
             }
             if let Err(e) = t.EndDraw(None, None) {
                 self.reset();
@@ -489,6 +491,32 @@ impl Renderer {
             }
             Ok(())
         }
+    }
+    unsafe fn paint_prepared(
+        &mut self,
+        target: &ID2D1HwndRenderTarget,
+        viewport: &Viewport,
+        text: &PreparedText,
+    ) -> Result<(), String> {
+        let w = &text.widget;
+        let p = viewport.point(w.x, w.y);
+        let rect = D2D_RECT_F {
+            left: p.X,
+            top: p.Y,
+            right: p.X + w.width * viewport.scale,
+            bottom: p.Y + w.height * viewport.scale,
+        };
+        let format = self.format(w, viewport.scale)?;
+        let brush = self.brush(target, &w.color, false)?;
+        target.DrawText(
+            &text.words,
+            &format,
+            &rect,
+            &brush,
+            D2D1_DRAW_TEXT_OPTIONS_CLIP,
+            DWRITE_MEASURING_MODE_NATURAL,
+        );
+        Ok(())
     }
     unsafe fn footer_text(
         &mut self,
@@ -520,10 +548,9 @@ impl Renderer {
         target: &ID2D1HwndRenderTarget,
         viewport: &Viewport,
         config: &Config,
-        store: &Store,
+        presentation: &super::footer::Presentation,
     ) -> Result<(), String> {
         let top = config.footer_top();
-        let center = config.canvas_width / 2.;
         let point = |x, y| viewport.point(x, y);
         let rect = |x, y, w, h| {
             let p = point(x, y);
@@ -549,7 +576,15 @@ impl Renderer {
                 &fill,
             );
             if i == 0 {
-                let accent = self.brush(target, "#80C5FF", false)?;
+                let accent = self.brush(
+                    target,
+                    if config.dashboard.enable_semantic_colors {
+                        "#80C5FF"
+                    } else {
+                        "#FFFFFF"
+                    },
+                    false,
+                )?;
                 target.FillRectangle(
                     &rect(
                         button.x + 16.,
@@ -643,49 +678,24 @@ impl Renderer {
                 },
             )?;
         }
-        let reading = super::footer::readout(store);
-        let width = config.canvas_width * 0.30;
-        let text = |value: String, y, h, font_size, color: &str| Widget {
-            x: center - width / 2.,
-            y,
-            width,
-            height: h,
-            text: value,
-            font_size,
-            color: color.into(),
-            align: "center".into(),
-            ..Widget::default()
-        };
-        if let Some(fps) = reading.fps {
-            self.footer_text(
-                target,
-                viewport,
-                text(reading.application, top + 7., 29., 23., "#999999"),
-            )?;
-            self.footer_text(
-                target,
-                viewport,
-                text(format!("{fps:.0} FPS"), top + 34., 85., 70., "#FFFFFF"),
-            )?;
-            if let Some(ms) = reading.frame_ms {
-                self.footer_text(
-                    target,
-                    viewport,
-                    text(
-                        format!("{ms:.1} ms por fotograma"),
-                        top + 119.,
-                        28.,
-                        23.,
-                        "#999999",
+        if presentation.pill {
+            let fill = self.brush(target, "#171717", false)?;
+            target.FillRoundedRectangle(
+                &D2D1_ROUNDED_RECT {
+                    rect: rect(
+                        config.canvas_width * 0.35,
+                        top + 44.,
+                        config.canvas_width * 0.30,
+                        62.,
                     ),
-                )?;
-            }
-        } else {
-            self.footer_text(
-                target,
-                viewport,
-                text(reading.status.into(), top + 48., 50., 34., "#888888"),
-            )?;
+                    radiusX: 20. * viewport.scale,
+                    radiusY: 20. * viewport.scale,
+                },
+                &fill,
+            );
+        }
+        for line in &presentation.lines {
+            self.paint_prepared(target, viewport, line)?;
         }
         Ok(())
     }

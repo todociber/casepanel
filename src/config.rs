@@ -77,6 +77,95 @@ pub struct Config {
     pub widgets: Vec<Widget>,
     #[serde(default)]
     pub footer: FooterConfig,
+    pub dashboard: DashboardConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct DashboardConfig {
+    pub enable_semantic_colors: bool,
+    pub enable_critical_pulse: bool,
+    pub thresholds: AlertThresholds,
+    pub show_bar_micro_labels: bool,
+    pub show_ai_reset_timer: bool,
+    pub show_network_in_header: bool,
+    pub bottom_bar_mode: BottomBarMode,
+}
+impl Default for DashboardConfig {
+    fn default() -> Self {
+        Self {
+            enable_semantic_colors: true,
+            enable_critical_pulse: true,
+            thresholds: AlertThresholds::default(),
+            show_bar_micro_labels: true,
+            show_ai_reset_timer: true,
+            show_network_in_header: true,
+            bottom_bar_mode: BottomBarMode::GameAndPower,
+        }
+    }
+}
+impl DashboardConfig {
+    pub fn minimal() -> Self {
+        Self {
+            enable_semantic_colors: false,
+            enable_critical_pulse: false,
+            show_bar_micro_labels: false,
+            show_ai_reset_timer: false,
+            show_network_in_header: false,
+            bottom_bar_mode: BottomBarMode::GameOnly,
+            ..Self::default()
+        }
+    }
+    pub fn validate(&self) -> Result<(), String> {
+        let t = &self.thresholds;
+        for (name, warn, crit, max) in [
+            ("CPU temperature", t.cpu_temp_warn, t.cpu_temp_crit, 150.),
+            ("GPU temperature", t.gpu_temp_warn, t.gpu_temp_crit, 150.),
+            ("VRAM temperature", t.vram_temp_warn, t.vram_temp_crit, 150.),
+            ("Memory usage", t.mem_usage_warn, t.mem_usage_crit, 100.),
+        ] {
+            if !warn.is_finite() || !crit.is_finite() || warn < 0. || warn >= crit || crit > max {
+                return Err(format!("{name}: require 0 ≤ warning < critical ≤ {max}"));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BottomBarMode {
+    #[default]
+    GameAndPower,
+    GameOnly,
+    TotalWattsOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AlertThresholds {
+    pub cpu_temp_warn: f32,
+    pub cpu_temp_crit: f32,
+    pub gpu_temp_warn: f32,
+    pub gpu_temp_crit: f32,
+    pub vram_temp_warn: f32,
+    pub vram_temp_crit: f32,
+    pub mem_usage_warn: f32,
+    pub mem_usage_crit: f32,
+}
+impl Default for AlertThresholds {
+    fn default() -> Self {
+        Self {
+            cpu_temp_warn: 75.,
+            cpu_temp_crit: 85.,
+            gpu_temp_warn: 70.,
+            gpu_temp_crit: 82.,
+            vram_temp_warn: 85.,
+            vram_temp_crit: 95.,
+            mem_usage_warn: 80.,
+            mem_usage_crit: 92.,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -96,6 +185,7 @@ impl Default for Config {
             bindings: BTreeMap::new(),
             widgets: vec![],
             footer: FooterConfig { enabled: true },
+            dashboard: DashboardConfig::default(),
         };
         let mut add = |id: &str,
                        kind: WidgetKind,
@@ -493,6 +583,7 @@ impl Config {
                 .all(|w| w.y + w.height <= self.footer_top())
     }
     pub fn validate(&self) -> Result<(), String> {
+        self.dashboard.validate()?;
         if self.schema_version != 1 {
             return Err("Unsupported profile version".into());
         }
@@ -552,7 +643,12 @@ impl Config {
     }
     pub fn load_or_recover(path: &Path) -> (Self, Option<String>) {
         if !path.exists() {
-            return (Self::default(), None);
+            let config = Self::default();
+            let warning = config
+                .save(path)
+                .err()
+                .map(|e| format!("Could not create default profile: {e}"));
+            return (config, warning);
         }
         match Self::load(path) {
             Ok(c) => (c, None),
@@ -621,6 +717,47 @@ pub fn parse_color(s: &str) -> Option<(f32, f32, f32)> {
 mod tests {
     use super::*;
     #[test]
+    fn partial_dashboard_config_keeps_defaults_and_explicit_false() {
+        let c: Config = serde_json::from_str(r#"{"dashboard":{"enable_semantic_colors":false,"thresholds":{"cpu_temp_warn":77.0},"bottom_bar_mode":"game_only"}}"#).unwrap();
+        assert!(!c.dashboard.enable_semantic_colors);
+        assert!(c.dashboard.show_bar_micro_labels);
+        assert_eq!(c.dashboard.thresholds.cpu_temp_warn, 77.);
+        assert_eq!(c.dashboard.thresholds.cpu_temp_crit, 85.);
+        assert_eq!(c.dashboard.thresholds.gpu_temp_warn, 70.);
+        assert_eq!(c.dashboard.bottom_bar_mode, BottomBarMode::GameOnly);
+        c.validate().unwrap();
+        let legacy: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.dashboard, DashboardConfig::default());
+        let roundtrip: Config = serde_json::from_slice(&serde_json::to_vec(&c).unwrap()).unwrap();
+        assert_eq!(roundtrip.dashboard, c.dashboard);
+    }
+    #[test]
+    fn invalid_thresholds_are_rejected_even_when_alerts_are_disabled() {
+        let mut d = DashboardConfig::minimal();
+        d.thresholds.cpu_temp_warn = d.thresholds.cpu_temp_crit;
+        assert!(d.validate().is_err());
+        d = DashboardConfig::default();
+        d.thresholds.mem_usage_crit = 101.;
+        assert!(d.validate().is_err());
+        d = DashboardConfig::default();
+        d.thresholds.gpu_temp_warn = f32::NAN;
+        assert!(d.validate().is_err());
+    }
+    #[test]
+    fn missing_profile_is_written_with_dashboard_defaults() {
+        let root = std::env::temp_dir().join(format!(
+            "sensorpanel-new-profile-{}-{}",
+            std::process::id(),
+            crate::model::now_ms()
+        ));
+        let path = root.join("profile.json");
+        let (c, warning) = Config::load_or_recover(&path);
+        assert!(warning.is_none());
+        assert_eq!(Config::load(&path).unwrap().dashboard, c.dashboard);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
     fn shipped_layout_is_valid() {
         Config::default().validate().unwrap();
     }
@@ -676,9 +813,11 @@ mod tests {
         let path = root.join("profile.json");
         let mut legacy = serde_json::to_value(Config::default()).unwrap();
         legacy.as_object_mut().unwrap().remove("footer");
+        legacy.as_object_mut().unwrap().remove("dashboard");
         std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
         let migrated = Config::load(&path).unwrap();
         assert!(migrated.footer.enabled);
+        assert_eq!(migrated.dashboard, DashboardConfig::default());
         assert_eq!(
             serde_json::to_value(&migrated.widgets).unwrap(),
             legacy["widgets"]

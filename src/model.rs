@@ -34,6 +34,9 @@ pub struct Sensor {
     pub observed_ms: u64,
     pub quality: Quality,
     pub message: String,
+    /// Optional external producer's five-hour reset time, in Unix milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_at_ms: Option<u64>,
 }
 
 impl Sensor {
@@ -49,6 +52,7 @@ impl Sensor {
             observed_ms: 0,
             quality: Quality::Unavailable,
             message: "No reading".into(),
+            reset_at_ms: None,
         }
     }
     pub fn set(&mut self, value: f64) {
@@ -180,6 +184,23 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_snapshots_accept_optional_ai_reset_metadata() {
+        let sensor = Sensor::new("registry-ai", "ai.claude.5h", "Claude", "%", 5000);
+        let mut json = serde_json::to_value(&sensor).unwrap();
+        assert!(json.get("reset_at_ms").is_none());
+        assert!(
+            serde_json::from_value::<Sensor>(json.clone())
+                .unwrap()
+                .reset_at_ms
+                .is_none()
+        );
+        json["reset_at_ms"] = serde_json::json!(1_800_000_000_000u64);
+        assert_eq!(
+            serde_json::from_value::<Sensor>(json).unwrap().reset_at_ms,
+            Some(1_800_000_000_000)
+        );
+    }
     #[test]
     fn zero_is_a_valid_fan_reading() {
         let mut s = Sensor::new("test", "fan", "fan", "RPM", 2000);

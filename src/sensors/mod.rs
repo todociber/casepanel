@@ -2,6 +2,7 @@ mod basic;
 mod fps;
 mod nvml;
 mod pawnio;
+pub mod system;
 use crate::{model::Snapshot, platform};
 pub use basic::Basic;
 pub use fps::Fps;

@@ -61,7 +61,13 @@ impl Basic {
                     .unwrap_or_else(|| "No external status provided".into());
                 let stamp = registry_string(false, path, "Str10")
                     .unwrap_or_else(|| "No update timestamp".into());
-                for (i, name, description) in [(4, "DW1", "Str1"), (5, "DW3", "Str3")] {
+                for (i, name, description, reset) in [
+                    (4, "DW1", "Str1", "Claude5HResetAt"),
+                    (5, "DW3", "Str3", "Codex5HResetAt"),
+                ] {
+                    self.sensors[i].reset_at_ms = registry_string(false, path, reset)
+                        .and_then(|v| v.trim().parse::<u64>().ok())
+                        .and_then(|v| v.checked_mul(1000));
                     let note = registry_string(false, path, description).unwrap_or_default();
                     match registry_dword(path, name) {
                         Some(value) if value <= 100 => {

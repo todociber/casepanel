@@ -16,11 +16,14 @@ The two modes share an executable but not application memory. A blocked hardware
 | `sensors/basic` | Win32 CPU/RAM and external Registry input |
 | `sensors/nvml` | NVIDIA queries using UUID identity, without control commands |
 | `sensors/fps` | Verified PresentMon helper, bounded timing aggregation, foreground application selection |
+| `sensors/system` | Unelevated IP Helper byte-counter deltas and read-only Windows power-scheme lookup |
 | `sensors/pawnio` | Bounded access to official modules and explicitly supported hardware |
 | `ipc` | Protected pipe, frame validation, supervision, and query watchdog |
 | `ui/monitors` | Active displays and persistent display identity |
 | `ui/render` | Direct2D/DirectWrite rendering, images, and unit conversion |
 | `ui/footer` | Footer readout, unavailable states, reserved slots, and settings hit testing |
+| `ui/dashboard` | One-second presentation cache: semantic colors, strings/UTF-16, optional labels, critical cards, and footer state |
+| `ui/settings` | Native Resumen/Diseño settings pages, live dashboard controls, validated thresholds and minimal preset |
 | `ui` | Native windows and editor controls |
 
 ## Readings and protocol
@@ -28,6 +31,8 @@ The two modes share an executable but not application memory. A blocked hardware
 `Sensor.id` includes physical identity and metric. `Sensor.key` identifies a logical role, such as `cpu.temperature`. The panel resolves stored bindings before drawing and does not silently change devices when a previously bound device disappears.
 
 Each sensor carries an optional value, unit, nominal interval, sample timestamp, quality, and message. Quality is `valid`, `reported`, `unavailable`, `error`, or `stale`. A missing reading for a known sensor preserves the last value as stale. Zero is valid, particularly for stopped fans.
+
+`Sensor.reset_at_ms` is optional additive metadata for externally supplied AI reset times; older snapshots omit it. The local panel's basic Windows/Registry readings are applied after collector snapshots, so an older collector cannot erase newer optional Registry data. Dashboard-only network and power-plan queries run in the unelevated panel and do not introduce subprocesses or IPC commands. Power scheme names are cached by GUID. Network deltas use monotonic elapsed time and per-interface LUID baselines; newly appearing or reset counters are never treated as traffic bursts.
 
 JSON frames end with a newline, use protocol version 1, and are limited to 256 KiB. Snapshots carry catalog and readings. Clients can activate/pause subscriptions or request shutdown. No message can specify registers, load code, or change hardware controls.
 
@@ -56,6 +61,10 @@ The helper disables display, input, and GPU timing tracking and uses a private p
 The footer is additive profile data and keeps schema version 1. Older profiles enable it only when there is at least a 1200 × 600 canvas and the bottom 150 pixels are completely clear. Explicit `footer.enabled: false` is preserved. Existing widgets are unchanged. Settings hit testing converts client coordinates through the same viewport as rendering, handles only local button release, and preserves the panel's non-activating behavior.
 
 Software rendering at 1 Hz avoids the persistent graphics-driver allocations observed with accelerated rendering on the integrated AMD GPU. Text formats, brushes, and images are cached; drawing resources are recreated on resize or target loss.
+
+`App::tick` prepares one `DashboardState` shared by the panel and editor. Semantic colors, formatted values/clock/titles, countdowns, network strings and footer text are calculated only at this one-second sensor tick. Additional paint/resize messages reuse prepared values and UTF-16. Critical alerts use a fixed 1 px border at alpha 0.6, avoiding another animation loop. Existing widget coordinates are preserved; micro-labels follow the six built-in bar IDs, network text follows `case_bar`, reset timers follow AI value widgets, and critical outlines follow built-in card IDs. Custom layouts can switch these additions off independently.
+
+Dashboard options and threshold subfields have Serde defaults and remain schema version 1. The Resumen settings page previews changes within one tick, validates finite ordered warning/critical pairs, saves through the existing atomic profile writer, and participates in the editor's save/discard behavior. The minimal preset retains layout, bindings, and thresholds. Disabling semantic colors overrides critical borders and navigation accents as well. Optional unbound metrics resolve only when one device matches; an explicit binding to a missing device never falls back to another one.
 
 The panel uses `HWND_BOTTOM` and `SWP_NOACTIVATE` on startup and display changes. It stays behind applications and preserves the user's focus. The editor behaves as a normal window.
 
